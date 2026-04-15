@@ -3,8 +3,13 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { RequireAuth, RequireOnboarded, RedirectIfAuth } from "@/components/AuthGuards";
 import AppLayout from "@/components/AppLayout";
 import LandingPage from "@/pages/LandingPage";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Onboarding from "@/pages/Onboarding";
 import Dashboard from "@/pages/Dashboard";
 import Agenda from "@/pages/Agenda";
 import Clientes from "@/pages/Clientes";
@@ -24,21 +29,26 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/app" element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="agenda" element={<Agenda />} />
-            <Route path="clientes" element={<Clientes />} />
-            <Route path="servicos" element={<Servicos />} />
-            <Route path="profissionais" element={<Profissionais />} />
-            <Route path="metas" element={<Metas />} />
-            <Route path="relatorios" element={<Relatorios />} />
-            <Route path="financeiro" element={<Financeiro />} />
-            <Route path="assinaturas" element={<Assinaturas />} />
-          </Route>
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
+            <Route path="/register" element={<RedirectIfAuth><Register /></RedirectIfAuth>} />
+            <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
+            <Route path="/app" element={<RequireOnboarded><AppLayout /></RequireOnboarded>}>
+              <Route index element={<Dashboard />} />
+              <Route path="agenda" element={<Agenda />} />
+              <Route path="clientes" element={<Clientes />} />
+              <Route path="servicos" element={<Servicos />} />
+              <Route path="profissionais" element={<Profissionais />} />
+              <Route path="metas" element={<Metas />} />
+              <Route path="relatorios" element={<Relatorios />} />
+              <Route path="financeiro" element={<Financeiro />} />
+              <Route path="assinaturas" element={<Assinaturas />} />
+            </Route>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
