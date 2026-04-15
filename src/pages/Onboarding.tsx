@@ -50,6 +50,7 @@ const STEPS = ['Barbearia', 'Horários', 'Serviços', 'Equipe', 'Plano'];
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
   const [data, setData] = useState<OnboardingData>({
     barbershopName: '',
     phone: '',
@@ -135,10 +136,15 @@ export default function Onboarding() {
         role: 'owner',
       });
 
-      // 4. Create subscription
+      // 4. Create subscription with 15-day trial
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 15);
+
       await supabase.from('tenant_subscriptions').insert({
         tenant_id: tenant.id,
         plan: data.plan,
+        status: 'trial',
+        expires_at: trialEndsAt.toISOString(),
       });
 
       // 5. Create service categories + services
@@ -173,10 +179,14 @@ export default function Onboarding() {
         );
       }
 
-      await refreshProfile();
+      // Save tenant ID to show on success screen
+      setCreatedTenantId(tenant.id);
 
-      toast({ title: 'Barbearia criada!', description: `${data.barbershopName} está pronta para uso.` });
-      navigate('/app');
+      // Sign out so user goes through login
+      await supabase.auth.signOut();
+
+      toast({ title: 'Barbearia criada!', description: `Sua barbearia foi configurada com sucesso.` });
+      setStep(STEPS.length); // go to success screen
     } catch (err: any) {
       console.error('Onboarding error:', err);
       toast({ title: 'Erro no cadastro', description: err.message, variant: 'destructive' });
