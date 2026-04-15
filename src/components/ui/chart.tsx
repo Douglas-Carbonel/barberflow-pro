@@ -93,16 +93,17 @@ const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> & {
     active?: boolean;
-    payload?: Array<Record<string, unknown>>;
+    payload?: Array<Record<string, any>>;
     label?: string;
-    labelFormatter?: (label: string, payload: Array<Record<string, unknown>>) => React.ReactNode;
-    formatter?: (value: unknown, name: string, item: Record<string, unknown>, index: number, payload: Array<Record<string, unknown>>) => React.ReactNode;
+    labelFormatter?: (label: any, payload: Array<Record<string, any>>) => React.ReactNode;
+    formatter?: (value: any, name: string, item: Record<string, any>, index: number, payload: Array<Record<string, any>>) => React.ReactNode;
     color?: string;
     hideLabel?: boolean;
     hideIndicator?: boolean;
     indicator?: "line" | "dot" | "dashed";
     nameKey?: string;
     labelKey?: string;
+    labelClassName?: string;
   }
 >(
   (
