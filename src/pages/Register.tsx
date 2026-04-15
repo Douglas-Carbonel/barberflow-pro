@@ -46,7 +46,7 @@ export default function Register() {
             </div>
             <span className="text-2xl font-bold text-foreground">BarberFlow</span>
           </Link>
-          <p className="text-muted-foreground mt-2 text-sm">Crie sua conta e configure sua barbearia</p>
+          <p className="text-muted-foreground mt-2 text-sm">Crie sua conta e ganhe 15 dias grátis</p>
         </div>
 
         <div className="glass-card rounded-xl p-6 space-y-5">
