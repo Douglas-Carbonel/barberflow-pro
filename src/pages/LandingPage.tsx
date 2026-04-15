@@ -40,9 +40,9 @@ export default function LandingPage() {
             <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Depoimentos</a>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/app" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Entrar</Link>
-            <Link to="/app" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
-              Teste Grátis
+            <Link to="/login" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Entrar</Link>
+            <Link to="/register" className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity">
+              Teste Grátis 15 dias
             </Link>
           </div>
         </div>
@@ -62,14 +62,14 @@ export default function LandingPage() {
             Gerencie agenda, equipe, clientes, metas e faturamento em uma única plataforma premium. Feito para quem leva a barbearia a sério.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mt-8">
-            <Link to="/app" className="px-8 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity flex items-center gap-2">
+            <Link to="/register" className="px-8 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity flex items-center gap-2">
               Começar Gratuitamente <ArrowRight className="h-4 w-4" />
             </Link>
             <a href="#features" className="px-8 py-3 bg-secondary text-secondary-foreground rounded-xl text-sm font-medium hover:bg-accent transition-colors">
               Ver Funcionalidades
             </a>
           </div>
-          <p className="text-xs text-muted-foreground mt-4">Sem cartão de crédito • 14 dias grátis • Cancele quando quiser</p>
+          <p className="text-xs text-muted-foreground mt-4">Sem cartão de crédito • 15 dias grátis • Cancele quando quiser</p>
         </div>
       </section>
 
@@ -121,10 +121,10 @@ export default function LandingPage() {
                   ))}
                 </ul>
                 <Link
-                  to="/app"
+                  to="/register"
                   className={`mt-6 w-full py-2.5 rounded-lg text-sm font-medium text-center block transition-opacity hover:opacity-90 ${plan.popular ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground'}`}
                 >
-                  Começar Agora
+                  Testar 15 dias grátis
                 </Link>
               </div>
             ))}
@@ -162,8 +162,8 @@ export default function LandingPage() {
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-foreground">Pronto para transformar sua barbearia?</h2>
           <p className="text-muted-foreground mt-3">Comece gratuitamente e veja o resultado em dias.</p>
-          <Link to="/app" className="inline-flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity mt-6">
-            Criar Conta Grátis <ArrowRight className="h-4 w-4" />
+          <Link to="/register" className="inline-flex items-center gap-2 px-8 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity mt-6">
+            Testar 15 Dias Grátis <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
