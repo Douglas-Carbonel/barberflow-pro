@@ -91,14 +91,19 @@ const ChartTooltip = RechartsPrimitive.Tooltip;
 
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
-    React.ComponentProps<"div"> & {
-      hideLabel?: boolean;
-      hideIndicator?: boolean;
-      indicator?: "line" | "dot" | "dashed";
-      nameKey?: string;
-      labelKey?: string;
-    }
+  React.ComponentProps<"div"> & {
+    active?: boolean;
+    payload?: Array<Record<string, unknown>>;
+    label?: string;
+    labelFormatter?: (label: string, payload: Array<Record<string, unknown>>) => React.ReactNode;
+    formatter?: (value: unknown, name: string, item: Record<string, unknown>, index: number, payload: Array<Record<string, unknown>>) => React.ReactNode;
+    color?: string;
+    hideLabel?: boolean;
+    hideIndicator?: boolean;
+    indicator?: "line" | "dot" | "dashed";
+    nameKey?: string;
+    labelKey?: string;
+  }
 >(
   (
     {
@@ -253,7 +258,7 @@ const ChartLegendContent = React.forwardRef<
 
         return (
           <div
-            key={item.value}
+            key={String(item.value)}
             className={cn("flex items-center gap-1.5 [&>svg]:h-3 [&>svg]:w-3 [&>svg]:text-muted-foreground")}
           >
             {itemConfig?.icon && !hideIcon ? (
@@ -262,7 +267,7 @@ const ChartLegendContent = React.forwardRef<
               <div
                 className="h-2 w-2 shrink-0 rounded-[2px]"
                 style={{
-                  backgroundColor: item.color,
+                  backgroundColor: item.color as string,
                 }}
               />
             )}
