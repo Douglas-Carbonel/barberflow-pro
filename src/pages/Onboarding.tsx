@@ -263,6 +263,12 @@ export default function Onboarding() {
           </div>
           <h1 className="text-xl font-bold text-foreground">Configure sua barbearia</h1>
           <p className="text-xs text-muted-foreground mt-1">15 dias grátis • Sem cartão de crédito</p>
+          <button
+            onClick={() => navigate('/login')}
+            className="text-xs text-muted-foreground hover:text-primary mt-2 underline underline-offset-2"
+          >
+            Pular e configurar depois
+          </button>
         </div>
 
         {/* Stepper */}
