@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
-import { RequireAuth, RequireOnboarded, RedirectIfAuth } from "@/components/AuthGuards";
+import { RequireAuth, RequireOnboarded, RedirectIfAuth, RequireNotOnboarded } from "@/components/AuthGuards";
 import AppLayout from "@/components/AppLayout";
 import LandingPage from "@/pages/LandingPage";
 import Login from "@/pages/Login";
@@ -34,7 +34,7 @@ const App = () => (
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<RedirectIfAuth><Login /></RedirectIfAuth>} />
             <Route path="/register" element={<RedirectIfAuth><Register /></RedirectIfAuth>} />
-            <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
+            <Route path="/onboarding" element={<RequireNotOnboarded><Onboarding /></RequireNotOnboarded>} />
             <Route path="/app" element={<RequireOnboarded><AppLayout /></RequireOnboarded>}>
               <Route index element={<Dashboard />} />
               <Route path="agenda" element={<Agenda />} />
