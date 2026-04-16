@@ -54,8 +54,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('role')
           .eq('user_id', userId)
           .limit(1)
-          .single();
-        if (roleData) setRole(roleData.role as AppRole);
+          .maybeSingle();
+        setRole(roleData ? (roleData.role as AppRole) : null);
       }
     } catch (err) {
       console.error('Error fetching user data:', err);
