@@ -1,7 +1,6 @@
 import { 
   LayoutDashboard, Calendar, Users, Scissors, UserCog, Target, 
-  BarChart3, DollarSign, CreditCard, Bell, Settings, LogOut,
-  ChevronLeft, Menu
+  BarChart3, DollarSign, CreditCard, LogOut,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import {
@@ -9,6 +8,8 @@ import {
   SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   SidebarFooter, SidebarHeader, useSidebar,
 } from '@/components/ui/sidebar';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const mainNav = [
   { title: 'Dashboard', url: '/app', icon: LayoutDashboard },
@@ -26,8 +27,19 @@ const businessNav = [
 ];
 
 export function AppSidebar() {
-  const { state, toggleSidebar } = useSidebar();
+  const { state } = useSidebar();
   const collapsed = state === 'collapsed';
+  const { profile, tenant, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
+  const initials = profile?.full_name
+    ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
+    : '??';
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -39,7 +51,9 @@ export function AppSidebar() {
           {!collapsed && (
             <div className="flex flex-col">
               <span className="font-bold text-foreground text-sm tracking-tight">BarberFlow</span>
-              <span className="text-[10px] text-muted-foreground">Barbearia Premium</span>
+              <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                {tenant?.name ?? 'Minha Barbearia'}
+              </span>
             </div>
           )}
         </div>
@@ -96,18 +110,32 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 border-t border-sidebar-border">
+      <SidebarFooter className="p-3 border-t border-sidebar-border space-y-2">
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-semibold text-primary">CS</span>
+            <span className="text-xs font-semibold text-primary">{initials}</span>
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-foreground truncate">Carlos Admin</p>
-              <p className="text-[10px] text-muted-foreground truncate">Dono • Plano Pro</p>
+              <p className="text-xs font-medium text-foreground truncate">
+                {profile?.full_name ?? 'Usuário'}
+              </p>
+              <p className="text-[10px] text-muted-foreground truncate">
+                {tenant?.saas_plan ? `Plano ${tenant.saas_plan}` : 'Demo'}
+              </p>
             </div>
           )}
         </div>
+
+        <button
+          onClick={handleLogout}
+          data-testid="button-logout"
+          title="Sair da conta"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors text-sm"
+        >
+          <LogOut className="h-4 w-4 flex-shrink-0" />
+          {!collapsed && <span>Sair</span>}
+        </button>
       </SidebarFooter>
     </Sidebar>
   );

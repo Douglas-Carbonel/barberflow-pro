@@ -2,8 +2,11 @@ import { Outlet } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { Bell, Search } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AppLayout() {
+  const { profile, tenant } = useAuth();
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
@@ -27,8 +30,8 @@ export default function AppLayout() {
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-primary rounded-full" />
               </button>
               <div className="text-right hidden sm:block">
-                <p className="text-xs font-medium text-foreground">Barbearia Premium</p>
-                <p className="text-[10px] text-muted-foreground">Unidade Centro</p>
+                <p className="text-xs font-medium text-foreground">{tenant?.name ?? 'Minha Barbearia'}</p>
+                <p className="text-[10px] text-muted-foreground">{profile?.full_name ?? ''}</p>
               </div>
             </div>
           </header>
