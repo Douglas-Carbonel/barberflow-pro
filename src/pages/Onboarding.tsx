@@ -100,11 +100,14 @@ export default function Onboarding() {
 
     try {
       const slug = data.barbershopName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      const tenantId = crypto.randomUUID();
 
-      // 1. Create tenant
-      const { data: tenant, error: tenantError } = await supabase
+      // 1. Create tenant without selecting it back yet.
+      // The user still has no tenant linked on profile, so SELECT policies can block return=representation here.
+      const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
+          id: tenantId,
           name: data.barbershopName,
           slug: slug + '-' + Date.now(),
           phone: data.phone,
@@ -115,9 +118,7 @@ export default function Onboarding() {
           closing_time: data.closingTime,
           working_days: data.workingDays,
           saas_plan: data.plan,
-        })
-        .select()
-        .single();
+        });
 
       if (tenantError) throw tenantError;
 
