@@ -76,9 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(newSession?.user ?? null);
 
         if (newSession?.user) {
-          // Use setTimeout to avoid Supabase auth deadlock,
-          // but only set loading=false AFTER fetchUserData completes
-          // so guards never see a stale tenant=null state.
+          // Keep loading=true while we fetch user data so guards never
+          // see an intermediate state of user=set, tenant=null.
+          setLoading(true);
           setTimeout(async () => {
             await fetchUserData(newSession.user.id);
             setLoading(false);
