@@ -125,7 +125,7 @@ export default function Onboarding() {
       // 2. Link profile to tenant
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ tenant_id: tenant.id })
+        .update({ tenant_id: tenantId })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
@@ -133,7 +133,7 @@ export default function Onboarding() {
       // 3. Create owner role
       await supabase.from('user_roles').insert({
         user_id: user.id,
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         role: 'owner',
       });
 
@@ -142,7 +142,7 @@ export default function Onboarding() {
       trialEndsAt.setDate(trialEndsAt.getDate() + 15);
 
       await supabase.from('tenant_subscriptions').insert({
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         plan: data.plan,
         status: 'trial',
         expires_at: trialEndsAt.toISOString(),
@@ -151,7 +151,7 @@ export default function Onboarding() {
       // 5. Create service categories + services
       const { data: category } = await supabase
         .from('service_categories')
-        .insert({ tenant_id: tenant.id, name: 'Geral' })
+        .insert({ tenant_id: tenantId, name: 'Geral' })
         .select()
         .single();
 
@@ -159,7 +159,7 @@ export default function Onboarding() {
       if (validServices.length > 0 && category) {
         await supabase.from('services').insert(
           validServices.map(s => ({
-            tenant_id: tenant.id,
+            tenant_id: tenantId,
             category_id: category.id,
             name: s.name,
             price: s.price,
@@ -173,7 +173,7 @@ export default function Onboarding() {
       if (validPros.length > 0) {
         await supabase.from('professionals').insert(
           validPros.map(p => ({
-            tenant_id: tenant.id,
+            tenant_id: tenantId,
             name: p.name,
             specialty: p.specialty || null,
           }))
@@ -181,7 +181,7 @@ export default function Onboarding() {
       }
 
       // Save tenant ID to show on success screen
-      setCreatedTenantId(tenant.id);
+      setCreatedTenantId(tenantId);
 
       // Sign out so user goes through login
       await supabase.auth.signOut();
