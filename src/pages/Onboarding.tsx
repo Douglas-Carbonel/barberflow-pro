@@ -47,10 +47,51 @@ const PLANS = [
 
 const STEPS = ['Barbearia', 'Horários', 'Serviços', 'Equipe', 'Plano'];
 
+// Creates a minimal demo tenant and links it to the user's profile.
+// This ensures that next login the user goes straight to /app instead of
+// being bounced back to /onboarding.
+async function createDemoTenant(userId: string, userEmail: string | undefined, barbershopName: string, plan: 'starter' | 'pro' | 'multi_unidade') {
+  const tenantId = crypto.randomUUID();
+  const name = barbershopName.trim() || (userEmail ? `Demo - ${userEmail}` : 'Minha Barbearia');
+  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Date.now();
+
+  const { error: tenantError } = await supabase.from('tenants').insert({
+    id: tenantId,
+    name,
+    slug,
+    opening_time: '08:00',
+    closing_time: '20:00',
+    working_days: [1, 2, 3, 4, 5, 6],
+    saas_plan: plan,
+  });
+  if (tenantError) throw tenantError;
+
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ tenant_id: tenantId })
+    .eq('id', userId);
+  if (profileError) throw profileError;
+
+  await supabase.from('user_roles').insert({ user_id: userId, tenant_id: tenantId, role: 'owner' });
+
+  const trialEndsAt = new Date();
+  trialEndsAt.setDate(trialEndsAt.getDate() + 15);
+  await supabase.from('tenant_subscriptions').insert({
+    tenant_id: tenantId,
+    plan,
+    status: 'trial',
+    expires_at: trialEndsAt.toISOString(),
+  });
+
+  return tenantId;
+}
+
 export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSkipping, setIsSkipping] = useState(false);
   const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
+  const [finalBarbershopName, setFinalBarbershopName] = useState('');
   const [data, setData] = useState<OnboardingData>({
     barbershopName: '',
     phone: '',
@@ -94,6 +135,23 @@ export default function Onboarding() {
     updateData({ professionals: updated });
   };
 
+  // Skip: create a minimal demo tenant so the user never gets stuck in this screen again.
+  const handleSkip = async () => {
+    if (!user) return;
+    setIsSkipping(true);
+    try {
+      await createDemoTenant(user.id, user.email, data.barbershopName, data.plan);
+      await refreshProfile();
+      toast({ title: 'Configuração salva!', description: 'Você pode completar o setup a qualquer momento nas configurações.' });
+      navigate('/app');
+    } catch (err: any) {
+      console.error('Skip onboarding error:', err);
+      toast({ title: 'Erro ao pular', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsSkipping(false);
+    }
+  };
+
   const handleFinish = async () => {
     if (!user) return;
     setIsSubmitting(true);
@@ -102,8 +160,7 @@ export default function Onboarding() {
       const slug = data.barbershopName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
       const tenantId = crypto.randomUUID();
 
-      // 1. Create tenant without selecting it back yet.
-      // The user still has no tenant linked on profile, so SELECT policies can block return=representation here.
+      // 1. Create tenant
       const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -119,7 +176,6 @@ export default function Onboarding() {
           working_days: data.workingDays,
           saas_plan: data.plan,
         });
-
       if (tenantError) throw tenantError;
 
       // 2. Link profile to tenant
@@ -127,7 +183,6 @@ export default function Onboarding() {
         .from('profiles')
         .update({ tenant_id: tenantId })
         .eq('id', user.id);
-
       if (profileError) throw profileError;
 
       // 3. Create owner role
@@ -140,7 +195,6 @@ export default function Onboarding() {
       // 4. Create subscription with 15-day trial
       const trialEndsAt = new Date();
       trialEndsAt.setDate(trialEndsAt.getDate() + 15);
-
       await supabase.from('tenant_subscriptions').insert({
         tenant_id: tenantId,
         plan: data.plan,
@@ -180,14 +234,13 @@ export default function Onboarding() {
         );
       }
 
-      // Save tenant ID to show on success screen
+      // 7. Refresh auth context so tenant is available immediately
+      await refreshProfile();
+
+      setFinalBarbershopName(data.barbershopName);
       setCreatedTenantId(tenantId);
 
-      // Sign out so user goes through login
-      await supabase.auth.signOut();
-
-      toast({ title: 'Barbearia criada!', description: `Sua barbearia foi configurada com sucesso.` });
-      setStep(STEPS.length); // go to success screen
+      toast({ title: 'Barbearia criada!', description: `${data.barbershopName} foi configurada com sucesso.` });
     } catch (err: any) {
       console.error('Onboarding error:', err);
       toast({ title: 'Erro no cadastro', description: err.message, variant: 'destructive' });
@@ -224,7 +277,7 @@ export default function Onboarding() {
             <div>
               <h1 className="text-xl font-bold text-foreground">Barbearia cadastrada!</h1>
               <p className="text-sm text-muted-foreground mt-2">
-                Sua barbearia <strong className="text-foreground">{data.barbershopName}</strong> foi criada com sucesso.
+                Sua barbearia <strong className="text-foreground">{finalBarbershopName}</strong> foi criada com sucesso.
               </p>
             </div>
 
@@ -240,10 +293,11 @@ export default function Onboarding() {
             </div>
 
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/app')}
+              data-testid="button-go-to-app"
               className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
             >
-              Ir para o Login <ChevronRight className="h-4 w-4" />
+              Entrar no painel <ChevronRight className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -265,10 +319,12 @@ export default function Onboarding() {
           <h1 className="text-xl font-bold text-foreground">Configure sua barbearia</h1>
           <p className="text-xs text-muted-foreground mt-1">15 dias grátis • Sem cartão de crédito</p>
           <button
-            onClick={() => navigate('/login')}
-            className="text-xs text-muted-foreground hover:text-primary mt-2 underline underline-offset-2"
+            data-testid="button-skip-onboarding"
+            onClick={handleSkip}
+            disabled={isSkipping}
+            className="text-xs text-muted-foreground hover:text-primary mt-2 underline underline-offset-2 disabled:opacity-50"
           >
-            Pular e configurar depois
+            {isSkipping ? 'Aguarde...' : 'Pular e configurar depois'}
           </button>
         </div>
 
@@ -302,6 +358,7 @@ export default function Onboarding() {
                 <label className="text-sm font-medium text-foreground mb-1.5 block">Nome da barbearia *</label>
                 <input value={data.barbershopName} onChange={e => updateData({ barbershopName: e.target.value })}
                   placeholder="Ex: Barbearia Premium" required
+                  data-testid="input-barbershop-name"
                   className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -309,24 +366,28 @@ export default function Onboarding() {
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Telefone</label>
                   <input value={data.phone} onChange={e => updateData({ phone: e.target.value })}
                     placeholder="(11) 99999-9999"
+                    data-testid="input-phone"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Endereço</label>
                   <input value={data.address} onChange={e => updateData({ address: e.target.value })}
                     placeholder="Rua, número"
+                    data-testid="input-address"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Cidade</label>
                   <input value={data.city} onChange={e => updateData({ city: e.target.value })}
                     placeholder="São Paulo"
+                    data-testid="input-city"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Estado</label>
                   <input value={data.state} onChange={e => updateData({ state: e.target.value })}
                     placeholder="SP"
+                    data-testid="input-state"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                 </div>
               </div>
@@ -344,11 +405,13 @@ export default function Onboarding() {
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Abertura</label>
                   <input type="time" value={data.openingTime} onChange={e => updateData({ openingTime: e.target.value })}
+                    data-testid="input-opening-time"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground outline-none focus:border-primary" />
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Fechamento</label>
                   <input type="time" value={data.closingTime} onChange={e => updateData({ closingTime: e.target.value })}
+                    data-testid="input-closing-time"
                     className="w-full px-4 py-2.5 bg-secondary rounded-lg border border-border text-sm text-foreground outline-none focus:border-primary" />
                 </div>
               </div>
@@ -357,6 +420,7 @@ export default function Onboarding() {
                 <div className="flex gap-2 flex-wrap">
                   {DAYS.map(d => (
                     <button key={d.value} type="button" onClick={() => toggleDay(d.value)}
+                      data-testid={`button-day-${d.value}`}
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         data.workingDays.includes(d.value) ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'
                       }`}>
@@ -376,7 +440,7 @@ export default function Onboarding() {
                   <Wrench className="h-5 w-5 text-primary" />
                   <h2 className="text-lg font-semibold text-foreground">Serviços</h2>
                 </div>
-                <button onClick={addService} className="text-xs text-primary hover:underline flex items-center gap-1">
+                <button onClick={addService} data-testid="button-add-service" className="text-xs text-primary hover:underline flex items-center gap-1">
                   <Plus className="h-3 w-3" /> Adicionar
                 </button>
               </div>
@@ -385,14 +449,17 @@ export default function Onboarding() {
                   <div key={i} className="flex items-center gap-2 bg-secondary/50 rounded-lg p-3">
                     <input value={s.name} onChange={e => updateService(i, 'name', e.target.value)}
                       placeholder="Nome do serviço"
+                      data-testid={`input-service-name-${i}`}
                       className="flex-1 px-3 py-1.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                     <input type="number" value={s.price} onChange={e => updateService(i, 'price', Number(e.target.value))}
                       placeholder="Preço"
+                      data-testid={`input-service-price-${i}`}
                       className="w-20 px-3 py-1.5 bg-secondary rounded-lg border border-border text-sm text-foreground outline-none focus:border-primary" />
                     <input type="number" value={s.duration} onChange={e => updateService(i, 'duration', Number(e.target.value))}
                       placeholder="Min"
+                      data-testid={`input-service-duration-${i}`}
                       className="w-16 px-3 py-1.5 bg-secondary rounded-lg border border-border text-sm text-foreground outline-none focus:border-primary" />
-                    <button onClick={() => removeService(i)} className="text-muted-foreground hover:text-destructive">
+                    <button onClick={() => removeService(i)} data-testid={`button-remove-service-${i}`} className="text-muted-foreground hover:text-destructive">
                       <X className="h-4 w-4" />
                     </button>
                   </div>
@@ -409,7 +476,7 @@ export default function Onboarding() {
                   <Users className="h-5 w-5 text-primary" />
                   <h2 className="text-lg font-semibold text-foreground">Equipe</h2>
                 </div>
-                <button onClick={addProfessional} className="text-xs text-primary hover:underline flex items-center gap-1">
+                <button onClick={addProfessional} data-testid="button-add-professional" className="text-xs text-primary hover:underline flex items-center gap-1">
                   <Plus className="h-3 w-3" /> Adicionar
                 </button>
               </div>
@@ -418,12 +485,14 @@ export default function Onboarding() {
                   <div key={i} className="flex items-center gap-2 bg-secondary/50 rounded-lg p-3">
                     <input value={p.name} onChange={e => updateProfessional(i, 'name', e.target.value)}
                       placeholder="Nome do profissional"
+                      data-testid={`input-professional-name-${i}`}
                       className="flex-1 px-3 py-1.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                     <input value={p.specialty} onChange={e => updateProfessional(i, 'specialty', e.target.value)}
                       placeholder="Especialidade"
+                      data-testid={`input-professional-specialty-${i}`}
                       className="flex-1 px-3 py-1.5 bg-secondary rounded-lg border border-border text-sm text-foreground placeholder:text-muted-foreground outline-none focus:border-primary" />
                     {data.professionals.length > 1 && (
-                      <button onClick={() => removeProfessional(i)} className="text-muted-foreground hover:text-destructive">
+                      <button onClick={() => removeProfessional(i)} data-testid={`button-remove-professional-${i}`} className="text-muted-foreground hover:text-destructive">
                         <X className="h-4 w-4" />
                       </button>
                     )}
@@ -444,6 +513,7 @@ export default function Onboarding() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {PLANS.map(plan => (
                   <button key={plan.id} onClick={() => updateData({ plan: plan.id })}
+                    data-testid={`button-plan-${plan.id}`}
                     className={`p-4 rounded-xl border-2 text-left transition-colors ${
                       data.plan === plan.id ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/30'
                     }`}>
@@ -466,16 +536,19 @@ export default function Onboarding() {
           {/* Navigation */}
           <div className="flex justify-between mt-6 pt-4 border-t border-border/50">
             <button onClick={() => setStep(s => s - 1)} disabled={step === 0}
+              data-testid="button-back"
               className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-30 flex items-center gap-1">
               <ChevronLeft className="h-4 w-4" /> Voltar
             </button>
             {step < STEPS.length - 1 ? (
               <button onClick={() => setStep(s => s + 1)} disabled={!canNext()}
+                data-testid="button-next"
                 className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
                 Próximo <ChevronRight className="h-4 w-4" />
               </button>
             ) : (
               <button onClick={handleFinish} disabled={isSubmitting}
+                data-testid="button-finish"
                 className="px-5 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-1">
                 {isSubmitting ? 'Criando...' : 'Finalizar'} <Check className="h-4 w-4" />
               </button>
