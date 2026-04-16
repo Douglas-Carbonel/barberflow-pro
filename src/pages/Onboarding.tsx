@@ -100,11 +100,14 @@ export default function Onboarding() {
 
     try {
       const slug = data.barbershopName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      const tenantId = crypto.randomUUID();
 
-      // 1. Create tenant
-      const { data: tenant, error: tenantError } = await supabase
+      // 1. Create tenant without selecting it back yet.
+      // The user still has no tenant linked on profile, so SELECT policies can block return=representation here.
+      const { error: tenantError } = await supabase
         .from('tenants')
         .insert({
+          id: tenantId,
           name: data.barbershopName,
           slug: slug + '-' + Date.now(),
           phone: data.phone,
@@ -115,16 +118,14 @@ export default function Onboarding() {
           closing_time: data.closingTime,
           working_days: data.workingDays,
           saas_plan: data.plan,
-        })
-        .select()
-        .single();
+        });
 
       if (tenantError) throw tenantError;
 
       // 2. Link profile to tenant
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({ tenant_id: tenant.id })
+        .update({ tenant_id: tenantId })
         .eq('id', user.id);
 
       if (profileError) throw profileError;
@@ -132,7 +133,7 @@ export default function Onboarding() {
       // 3. Create owner role
       await supabase.from('user_roles').insert({
         user_id: user.id,
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         role: 'owner',
       });
 
@@ -141,7 +142,7 @@ export default function Onboarding() {
       trialEndsAt.setDate(trialEndsAt.getDate() + 15);
 
       await supabase.from('tenant_subscriptions').insert({
-        tenant_id: tenant.id,
+        tenant_id: tenantId,
         plan: data.plan,
         status: 'trial',
         expires_at: trialEndsAt.toISOString(),
@@ -150,7 +151,7 @@ export default function Onboarding() {
       // 5. Create service categories + services
       const { data: category } = await supabase
         .from('service_categories')
-        .insert({ tenant_id: tenant.id, name: 'Geral' })
+        .insert({ tenant_id: tenantId, name: 'Geral' })
         .select()
         .single();
 
@@ -158,7 +159,7 @@ export default function Onboarding() {
       if (validServices.length > 0 && category) {
         await supabase.from('services').insert(
           validServices.map(s => ({
-            tenant_id: tenant.id,
+            tenant_id: tenantId,
             category_id: category.id,
             name: s.name,
             price: s.price,
@@ -172,7 +173,7 @@ export default function Onboarding() {
       if (validPros.length > 0) {
         await supabase.from('professionals').insert(
           validPros.map(p => ({
-            tenant_id: tenant.id,
+            tenant_id: tenantId,
             name: p.name,
             specialty: p.specialty || null,
           }))
@@ -180,7 +181,7 @@ export default function Onboarding() {
       }
 
       // Save tenant ID to show on success screen
-      setCreatedTenantId(tenant.id);
+      setCreatedTenantId(tenantId);
 
       // Sign out so user goes through login
       await supabase.auth.signOut();
