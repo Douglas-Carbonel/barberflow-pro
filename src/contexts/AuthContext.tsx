@@ -28,7 +28,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = async (userId: string) => {
     try {
-      // Fetch profile
       const { data: profileData } = await supabase
         .from('profiles')
         .select('*')
@@ -38,7 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profileData) {
         setProfile(profileData as Profile);
 
-        // Fetch tenant if profile has one
         if (profileData.tenant_id) {
           const { data: tenantData } = await supabase
             .from('tenants')
@@ -46,9 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .eq('id', profileData.tenant_id)
             .single();
           setTenant(tenantData as Tenant | null);
+        } else {
+          setTenant(null);
         }
 
-        // Fetch role
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
@@ -56,37 +55,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .limit(1)
           .maybeSingle();
         setRole(roleData ? (roleData.role as AppRole) : null);
+      } else {
+        setProfile(null);
+        setTenant(null);
+        setRole(null);
       }
     } catch (err) {
       console.error('Error fetching user data:', err);
+      setProfile(null);
+      setTenant(null);
+      setRole(null);
     }
   };
 
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
         if (newSession?.user) {
-          // Use setTimeout to avoid Supabase auth deadlock
-          setTimeout(() => fetchUserData(newSession.user.id), 0);
+          // Use setTimeout to avoid Supabase auth deadlock,
+          // but only set loading=false AFTER fetchUserData completes
+          // so guards never see a stale tenant=null state.
+          setTimeout(async () => {
+            await fetchUserData(newSession.user.id);
+            setLoading(false);
+          }, 0);
         } else {
           setProfile(null);
           setTenant(null);
           setRole(null);
+          setLoading(false);
         }
-        setLoading(false);
       }
     );
 
-    // THEN check existing session
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+    // THEN check existing session — wait for user data before releasing loading
+    supabase.auth.getSession().then(async ({ data: { session: existingSession } }) => {
       setSession(existingSession);
       setUser(existingSession?.user ?? null);
       if (existingSession?.user) {
-        fetchUserData(existingSession.user.id);
+        await fetchUserData(existingSession.user.id);
       }
       setLoading(false);
     });
