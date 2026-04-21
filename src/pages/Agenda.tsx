@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Plus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Clock, Plus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2, List, LayoutGrid, CalendarDays, Calendar as CalendarIcon, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -70,6 +70,26 @@ function formatLongDate(iso: string) {
   });
 }
 
+function buildDayStrip(centerIso: string, span = 21): string[] {
+  // Returns an array of ISO dates centered on `centerIso`.
+  const half = Math.floor(span / 2);
+  const out: string[] = [];
+  for (let i = -half; i <= half; i++) out.push(shiftDate(centerIso, i));
+  return out;
+}
+
+const weekdayShort = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+function dayParts(iso: string) {
+  const d = new Date(iso + 'T12:00:00');
+  return {
+    day: d.getDate(),
+    weekday: weekdayShort[d.getDay()],
+    month: d.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+    isToday: iso === todayISO(),
+  };
+}
+
 function addMinutesToTime(time: string, minutes: number): string {
   const [h, m] = time.split(':').map(Number);
   const total = h * 60 + m + minutes;
@@ -93,6 +113,8 @@ export default function Agenda() {
   const qc = useQueryClient();
   const [date, setDate] = useState<string>(todayISO());
   const [selectedProfessional, setSelectedProfessional] = useState('all');
+  const [view, setView] = useState<'lista' | 'grade'>('lista');
+  const dayStripRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -255,9 +277,28 @@ export default function Agenda() {
     saveMutation.mutate(form);
   };
 
+  const dayStrip = useMemo(() => buildDayStrip(date, 21), [date]);
+
+  // Auto-scroll the day strip so the selected date is centered.
+  useEffect(() => {
+    const container = dayStripRef.current;
+    if (!container) return;
+    const selected = container.querySelector<HTMLElement>('[data-selected="true"]');
+    if (!selected) return;
+    const target =
+      selected.offsetLeft - container.clientWidth / 2 + selected.clientWidth / 2;
+    container.scrollTo({ left: target, behavior: 'smooth' });
+  }, [date]);
+
+  const dayCount = visibleAppointments.length;
+  const dayRevenue = visibleAppointments
+    .filter((a) => a.status !== 'cancelado' && a.status !== 'nao_compareceu')
+    .reduce((sum, a) => sum + Number(a.price), 0);
+
   return (
     <div className="space-y-4 animate-slide-up">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* Header (title hidden on mobile - already in MobileHeader) */}
+      <div className="hidden md:flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Agenda</h1>
           <p className="text-sm text-muted-foreground capitalize" data-testid="text-current-date">
@@ -273,157 +314,306 @@ export default function Agenda() {
         </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
-          <button onClick={() => setDate(shiftDate(date, -1))} data-testid="button-prev-day" className="p-1 hover:text-foreground text-muted-foreground">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button onClick={() => setDate(todayISO())} data-testid="button-today" className="text-xs font-medium text-foreground px-2 hover:text-primary">
+      {/* Mobile: month + nav arrows */}
+      <div className="md:hidden flex items-center justify-between">
+        <p className="text-sm font-semibold capitalize" data-testid="text-current-date">
+          {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', {
+            month: 'long',
+            year: 'numeric',
+          })}
+        </p>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setDate(todayISO())}
+            data-testid="button-today"
+            className="text-xs font-medium px-3 py-1.5 rounded-full bg-secondary hover:bg-secondary/80"
+          >
             Hoje
           </button>
-          <button onClick={() => setDate(shiftDate(date, 1))} data-testid="button-next-day" className="p-1 hover:text-foreground text-muted-foreground">
-            <ChevronRight className="h-4 w-4" />
-          </button>
+          <label className="p-2 rounded-full bg-secondary hover:bg-secondary/80 cursor-pointer">
+            <CalendarIcon className="h-4 w-4" />
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => e.target.value && setDate(e.target.value)}
+              data-testid="input-date"
+              className="sr-only"
+            />
+          </label>
+        </div>
+      </div>
+
+      {/* Day strip - horizontal scrollable date picker (mobile-first) */}
+      <div className="-mx-4 md:mx-0">
+        <div
+          ref={dayStripRef}
+          className="flex items-stretch gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide snap-x snap-mandatory"
+          style={{ scrollbarWidth: 'none' }}
+          data-testid="day-strip"
+        >
+          {dayStrip.map((iso) => {
+            const p = dayParts(iso);
+            const selected = iso === date;
+            return (
+              <button
+                key={iso}
+                onClick={() => setDate(iso)}
+                data-selected={selected}
+                data-testid={`day-${iso}`}
+                className={`snap-center flex flex-col items-center justify-center min-w-[58px] py-2.5 rounded-2xl transition-all ${
+                  selected
+                    ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
+                    : 'bg-secondary/60 text-foreground hover:bg-secondary'
+                }`}
+              >
+                <span
+                  className={`text-[10px] uppercase font-medium ${
+                    selected ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                  }`}
+                >
+                  {p.weekday}
+                </span>
+                <span className="text-xl font-bold leading-tight">{p.day}</span>
+                {p.isToday && !selected && (
+                  <span className="h-1 w-1 rounded-full bg-primary mt-0.5" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Filter + view toggle */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 bg-secondary/60 rounded-full pl-3 pr-1 py-1 flex-1 min-w-0">
+          <Filter className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <select
+            value={selectedProfessional}
+            onChange={(e) => setSelectedProfessional(e.target.value)}
+            data-testid="select-professional"
+            className="bg-transparent text-foreground text-xs border-none outline-none flex-1 min-w-0 py-1.5"
+          >
+            <option value="all">Todos profissionais</option>
+            {professionals.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <input
-          type="date" value={date}
-          onChange={(e) => setDate(e.target.value)}
-          data-testid="input-date"
-          className="bg-secondary text-foreground text-xs rounded-lg px-3 py-2 border-none outline-none"
-        />
-
-        <select
-          value={selectedProfessional}
-          onChange={(e) => setSelectedProfessional(e.target.value)}
-          data-testid="select-professional"
-          className="bg-secondary text-foreground text-xs rounded-lg px-3 py-2 border-none outline-none"
-        >
-          <option value="all">Todos os profissionais</option>
-          {professionals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
+        <div className="flex items-center bg-secondary/60 rounded-full p-1">
+          <button
+            onClick={() => setView('lista')}
+            data-testid="view-lista"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              view === 'lista'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+          >
+            <List className="h-3.5 w-3.5" />
+            <span className="hidden xs:inline">Lista</span>
+          </button>
+          <button
+            onClick={() => setView('grade')}
+            data-testid="view-grade"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+              view === 'grade'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground'
+            }`}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            <span className="hidden xs:inline">Grade</span>
+          </button>
+        </div>
       </div>
 
-      <div className="glass-card rounded-xl overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
-            <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Carregando agenda...
-          </div>
-        ) : visibleProfessionals.length === 0 ? (
-          <div className="text-center py-12 px-4">
-            <p className="text-sm text-muted-foreground" data-testid="text-no-professionals">
-              Cadastre profissionais para usar a agenda.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <div className="min-w-[800px]">
-              <div className="grid border-b border-border" style={{ gridTemplateColumns: `60px repeat(${visibleProfessionals.length}, 1fr)` }}>
-                <div className="p-3 text-[10px] text-muted-foreground uppercase">Hora</div>
-                {visibleProfessionals.map((prof) => (
-                  <div key={prof.id} className="p-3 text-center border-l border-border">
-                    <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-1">
-                      <span className="text-[10px] font-semibold text-primary">
-                        {prof.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </span>
-                    </div>
-                    <p className="text-xs font-medium text-foreground">{prof.name.split(' ')[0]}</p>
-                  </div>
-                ))}
-              </div>
-
-              {timeSlots.map((time) => {
-                const appts = visibleAppointments.filter((a) => a.start_time.slice(0, 5) === time);
-                return (
-                  <div
-                    key={time}
-                    className="grid border-b border-border/50 hover:bg-accent/30 transition-colors"
-                    style={{ gridTemplateColumns: `60px repeat(${visibleProfessionals.length}, 1fr)` }}
-                  >
-                    <div className="p-2 text-[11px] text-muted-foreground font-mono">{time}</div>
-                    {visibleProfessionals.map((prof) => {
-                      const appt = appts.find((a) => a.professional_id === prof.id);
-                      return (
-                        <div key={prof.id} className="p-1 border-l border-border/50 min-h-[48px]">
-                          {appt && (
-                            <button
-                              type="button"
-                              onClick={() => openEdit(appt)}
-                              data-testid={`card-appointment-${appt.id}`}
-                              className={`w-full text-left rounded-lg p-2 cursor-pointer hover:opacity-80 transition-opacity ${statusColors[appt.status]}`}
-                              title="Clique para editar"
-                            >
-                              <p className="text-[11px] font-medium truncate">{appt.client?.name ?? '—'}</p>
-                              <p className="text-[10px] opacity-80 truncate">{appt.service?.name ?? '—'}</p>
-                              <div className="flex items-center gap-1 mt-0.5">
-                                <Clock className="h-2.5 w-2.5" />
-                                <span className="text-[9px]">{appt.duration}min</span>
-                                <span className="text-[9px] ml-auto font-medium">R$ {Number(appt.price).toFixed(0)}</span>
-                              </div>
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="glass-card rounded-xl p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">Agendamentos do Dia</h3>
-        {appointments.length === 0 ? (
-          <p className="text-xs text-muted-foreground py-4 text-center" data-testid="text-empty-appointments">
-            Nenhum agendamento neste dia.
+      {/* Day summary */}
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-2xl bg-secondary/40 p-3">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Agendamentos</p>
+          <p className="text-xl font-bold text-foreground" data-testid="text-day-count">{dayCount}</p>
+        </div>
+        <div className="rounded-2xl bg-secondary/40 p-3">
+          <p className="text-[10px] uppercase text-muted-foreground tracking-wider">Receita prevista</p>
+          <p className="text-xl font-bold text-foreground" data-testid="text-day-revenue">
+            R$ {dayRevenue.toFixed(0)}
           </p>
-        ) : (
-          <div className="space-y-2">
-            {appointments.map((appt) => (
-              <div
-                key={appt.id}
-                data-testid={`row-appointment-${appt.id}`}
-                className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors group"
+        </div>
+      </div>
+
+      {/* Content by view mode */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
+          <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Carregando agenda...
+        </div>
+      ) : view === 'lista' ? (
+        // ===== LIST VIEW (mobile-first timeline) =====
+        <div className="space-y-2">
+          {visibleAppointments.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+              <CalendarDays className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm text-foreground font-medium">Sem agendamentos</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Toque no botão + para criar um novo.
+              </p>
+              <button
+                onClick={openNew}
+                data-testid="button-new-appointment-empty"
+                className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-full text-xs font-semibold hover:opacity-90"
               >
-                <div className="text-center min-w-[45px]">
-                  <p className="text-sm font-bold text-foreground">{appt.start_time.slice(0, 5)}</p>
-                  <p className="text-[10px] text-muted-foreground">{appt.duration}min</p>
+                <Plus className="h-3.5 w-3.5" /> Criar agendamento
+              </button>
+            </div>
+          ) : (
+            visibleAppointments.map((appt) => (
+              <button
+                key={appt.id}
+                type="button"
+                onClick={() => openEdit(appt)}
+                data-testid={`row-appointment-${appt.id}`}
+                className="w-full flex items-stretch gap-3 p-3 rounded-2xl bg-card border border-border hover:border-primary/40 transition-colors text-left"
+              >
+                <div className="flex flex-col items-center justify-center min-w-[58px] rounded-xl bg-secondary/60 px-2 py-2">
+                  <p className="text-base font-bold text-foreground leading-none">
+                    {appt.start_time.slice(0, 5)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    {appt.duration}min
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{appt.client?.name ?? '—'}</p>
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground truncate">
+                      {appt.client?.name ?? '—'}
+                    </p>
+                    <span className="text-sm font-bold text-foreground flex-shrink-0">
+                      R$ {Number(appt.price).toFixed(0)}
+                    </span>
+                  </div>
                   <p className="text-xs text-muted-foreground truncate">
                     {appt.service?.name ?? '—'} • {appt.professional?.name ?? '—'}
                   </p>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] ${statusColors[appt.status]} border-none`}
+                    >
+                      {statusLabels[appt.status]}
+                    </Badge>
+                    <div
+                      className="flex items-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(appt);
+                        }}
+                        data-testid={`button-edit-appointment-${appt.id}`}
+                        className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground"
+                        title="Editar"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteId(appt.id);
+                        }}
+                        data-testid={`button-delete-appointment-${appt.id}`}
+                        className="p-1.5 rounded-lg hover:bg-destructive/15 text-muted-foreground hover:text-destructive"
+                        title="Excluir"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <Badge variant="outline" className={`text-[10px] ${statusColors[appt.status]} border-none`}>
-                  {statusLabels[appt.status]}
-                </Badge>
-                <span className="text-sm font-semibold text-foreground">R$ {Number(appt.price).toFixed(0)}</span>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => openEdit(appt)}
-                    data-testid={`button-edit-appointment-${appt.id}`}
-                    className="p-1.5 rounded-md bg-background hover:bg-background/70 text-muted-foreground hover:text-foreground"
-                    title="Editar"
-                  >
-                    <Pencil className="h-3 w-3" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteId(appt.id)}
-                    data-testid={`button-delete-appointment-${appt.id}`}
-                    className="p-1.5 rounded-md bg-background hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
-                    title="Excluir"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+              </button>
+            ))
+          )}
+        </div>
+      ) : (
+        // ===== GRID VIEW (desktop-style; horizontal scroll on mobile) =====
+        <div className="glass-card rounded-2xl overflow-hidden">
+          {visibleProfessionals.length === 0 ? (
+            <div className="text-center py-12 px-4">
+              <p className="text-sm text-muted-foreground" data-testid="text-no-professionals">
+                Cadastre profissionais para usar a agenda.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div
+                  className="grid border-b border-border bg-card/60"
+                  style={{ gridTemplateColumns: `56px repeat(${visibleProfessionals.length}, 1fr)` }}
+                >
+                  <div className="p-3 text-[10px] text-muted-foreground uppercase">Hora</div>
+                  {visibleProfessionals.map((prof) => (
+                    <div key={prof.id} className="p-3 text-center border-l border-border">
+                      <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-1">
+                        <span className="text-[10px] font-semibold text-primary">
+                          {prof.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-xs font-medium text-foreground">{prof.name.split(' ')[0]}</p>
+                    </div>
+                  ))}
                 </div>
+
+                {timeSlots.map((time) => {
+                  const appts = visibleAppointments.filter(
+                    (a) => a.start_time.slice(0, 5) === time,
+                  );
+                  return (
+                    <div
+                      key={time}
+                      className="grid border-b border-border/50 hover:bg-accent/30 transition-colors"
+                      style={{ gridTemplateColumns: `56px repeat(${visibleProfessionals.length}, 1fr)` }}
+                    >
+                      <div className="p-2 text-[11px] text-muted-foreground font-mono">{time}</div>
+                      {visibleProfessionals.map((prof) => {
+                        const appt = appts.find((a) => a.professional_id === prof.id);
+                        return (
+                          <div key={prof.id} className="p-1 border-l border-border/50 min-h-[48px]">
+                            {appt && (
+                              <button
+                                type="button"
+                                onClick={() => openEdit(appt)}
+                                data-testid={`card-appointment-${appt.id}`}
+                                className={`w-full text-left rounded-lg p-2 cursor-pointer hover:opacity-80 transition-opacity ${statusColors[appt.status]}`}
+                                title="Clique para editar"
+                              >
+                                <p className="text-[11px] font-medium truncate">
+                                  {appt.client?.name ?? '—'}
+                                </p>
+                                <p className="text-[10px] opacity-80 truncate">
+                                  {appt.service?.name ?? '—'}
+                                </p>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  <span className="text-[9px]">{appt.duration}min</span>
+                                  <span className="text-[9px] ml-auto font-medium">
+                                    R$ {Number(appt.price).toFixed(0)}
+                                  </span>
+                                </div>
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="sm:max-w-md">
