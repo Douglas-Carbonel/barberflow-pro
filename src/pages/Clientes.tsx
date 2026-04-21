@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import { clients } from '@/data/mockData';
-import { Search, Plus, Phone, Calendar, DollarSign, Star, Tag } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Search, Plus, Phone, Mail, Calendar, Tag, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import type { Client } from '@/types/database';
 
 const tagColors: Record<string, string> = {
   'VIP': 'bg-primary/20 text-primary',
@@ -10,26 +17,103 @@ const tagColors: Record<string, string> = {
   'Inativo': 'bg-destructive/20 text-destructive',
 };
 
+interface NewClient {
+  name: string;
+  phone: string;
+  email: string;
+  birthday: string;
+  notes: string;
+  tags: string;
+}
+
+const emptyForm: NewClient = { name: '', phone: '', email: '', birthday: '', notes: '', tags: '' };
+
 export default function Clientes() {
+  const { tenant } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [selectedTag, setSelectedTag] = useState('all');
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState<NewClient>(emptyForm);
 
-  const allTags = [...new Set(clients.flatMap(c => c.tags))];
+  const { data: clients = [], isLoading } = useQuery<Client[]>({
+    queryKey: ['/api/clients', tenant?.id],
+    enabled: !!tenant?.id,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', tenant!.id)
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      return (data ?? []) as Client[];
+    },
+  });
 
-  const filtered = clients.filter(c => {
-    const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search);
-    const matchTag = selectedTag === 'all' || c.tags.includes(selectedTag);
+  const createMutation = useMutation({
+    mutationFn: async (input: NewClient) => {
+      if (!tenant?.id) throw new Error('Sem tenant');
+      const tags = input.tags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const { error } = await supabase.from('clients').insert({
+        tenant_id: tenant.id,
+        name: input.name.trim(),
+        phone: input.phone.trim() || null,
+        email: input.email.trim() || null,
+        birthday: input.birthday || null,
+        notes: input.notes.trim() || null,
+        tags,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/clients', tenant?.id] });
+      toast({ title: 'Cliente criado', description: 'Adicionado à sua base.' });
+      setForm(emptyForm);
+      setOpen(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro ao criar', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const allTags = Array.from(new Set(clients.flatMap((c) => c.tags ?? [])));
+
+  const filtered = clients.filter((c) => {
+    const matchSearch =
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      (c.phone ?? '').includes(search);
+    const matchTag = selectedTag === 'all' || (c.tags ?? []).includes(selectedTag);
     return matchSearch && matchTag;
   });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      toast({ title: 'Nome obrigatório', variant: 'destructive' });
+      return;
+    }
+    createMutation.mutate(form);
+  };
 
   return (
     <div className="space-y-4 animate-slide-up">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Clientes</h1>
-          <p className="text-sm text-muted-foreground">{clients.length} clientes cadastrados</p>
+          <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Clientes</h1>
+          <p className="text-sm text-muted-foreground" data-testid="text-clients-count">
+            {isLoading ? 'Carregando...' : `${clients.length} clientes cadastrados`}
+          </p>
         </div>
-        <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2 w-fit">
+        <button
+          onClick={() => setOpen(true)}
+          data-testid="button-new-client"
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2 w-fit"
+        >
           <Plus className="h-4 w-4" /> Novo Cliente
         </button>
       </div>
@@ -43,20 +127,22 @@ export default function Clientes() {
             placeholder="Buscar por nome ou telefone..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            data-testid="input-search-clients"
             className="bg-transparent border-none outline-none text-sm text-foreground placeholder:text-muted-foreground w-full"
           />
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           <button
             onClick={() => setSelectedTag('all')}
             className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${selectedTag === 'all' ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
           >
             Todos
           </button>
-          {allTags.map(tag => (
+          {allTags.map((tag) => (
             <button
               key={tag}
               onClick={() => setSelectedTag(tag)}
+              data-testid={`button-filter-tag-${tag}`}
               className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${selectedTag === tag ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}
             >
               {tag}
@@ -65,56 +151,173 @@ export default function Clientes() {
         </div>
       </div>
 
-      {/* Client Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map(client => (
-          <div key={client.id} className="glass-card rounded-xl p-4 hover:border-primary/30 transition-colors cursor-pointer group">
-            <div className="flex items-start gap-3">
-              <div className="h-11 w-11 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <span className="text-sm font-semibold text-primary">{client.name.split(' ').map(n => n[0]).join('').slice(0, 2)}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">{client.name}</p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Phone className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">{client.phone}</span>
+      {/* Empty / Loading / List */}
+      {isLoading ? (
+        <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
+          <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Carregando clientes...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-20 border border-dashed border-border rounded-xl">
+          <p className="text-sm text-muted-foreground" data-testid="text-empty-clients">
+            {clients.length === 0
+              ? 'Nenhum cliente cadastrado ainda. Clique em "Novo Cliente" para começar.'
+              : 'Nenhum cliente corresponde aos filtros.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map((client) => (
+            <div
+              key={client.id}
+              data-testid={`card-client-${client.id}`}
+              className="glass-card rounded-xl p-4 hover:border-primary/30 transition-colors cursor-pointer group"
+            >
+              <div className="flex items-start gap-3">
+                <div className="h-11 w-11 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                  <span className="text-sm font-semibold text-primary">
+                    {client.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
+                    {client.name}
+                  </p>
+                  {client.phone && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Phone className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">{client.phone}</span>
+                    </div>
+                  )}
+                  {client.email && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Mail className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground truncate">{client.email}</span>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
 
-            <div className="flex flex-wrap gap-1 mt-3">
-              {client.tags.map(tag => (
-                <Badge key={tag} variant="outline" className={`text-[10px] border-none ${tagColors[tag] || 'bg-secondary text-secondary-foreground'}`}>
-                  {tag}
-                </Badge>
-              ))}
-            </div>
+              {(client.tags?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1 mt-3">
+                  {client.tags.map((tag) => (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className={`text-[10px] border-none ${tagColors[tag] || 'bg-secondary text-secondary-foreground'}`}
+                    >
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
 
-            <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-border/50">
-              <div className="text-center">
-                <p className="text-xs font-bold text-foreground">{client.visits}</p>
-                <p className="text-[10px] text-muted-foreground">Visitas</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs font-bold text-foreground">R$ {client.totalSpent.toLocaleString('pt-BR')}</p>
-                <p className="text-[10px] text-muted-foreground">Total</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs font-bold text-foreground">{client.frequency}</p>
-                <p className="text-[10px] text-muted-foreground">Freq.</p>
-              </div>
+              {client.birthday && (
+                <div className="mt-3 pt-3 border-t border-border/50 flex items-center gap-1.5">
+                  <Calendar className="h-3 w-3 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground">
+                    Aniversário: {new Date(client.birthday).toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              )}
             </div>
+          ))}
+        </div>
+      )}
 
-            <div className="mt-3 pt-3 border-t border-border/50 flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <Star className="h-3 w-3 text-primary" />
-                <span className="text-[10px] text-muted-foreground">{client.favoriteProfessional}</span>
-              </div>
-              <span className="text-[10px] text-muted-foreground">Última: {new Date(client.lastVisit).toLocaleDateString('pt-BR')}</span>
+      {/* New client dialog */}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Novo Cliente</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Nome *</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                data-testid="input-client-name"
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                required
+              />
             </div>
-          </div>
-        ))}
-      </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Telefone</label>
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                  data-testid="input-client-phone"
+                  placeholder="(11) 99999-9999"
+                  className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Aniversário</label>
+                <input
+                  type="date"
+                  value={form.birthday}
+                  onChange={(e) => setForm({ ...form, birthday: e.target.value })}
+                  data-testid="input-client-birthday"
+                  className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">E-mail</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                data-testid="input-client-email"
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground flex items-center gap-1">
+                <Tag className="h-3 w-3" /> Tags (separadas por vírgula)
+              </label>
+              <input
+                type="text"
+                value={form.tags}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                data-testid="input-client-tags"
+                placeholder="VIP, Recorrente"
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Observações</label>
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                data-testid="input-client-notes"
+                rows={2}
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none"
+              />
+            </div>
+            <DialogFooter>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                data-testid="button-save-client"
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              >
+                {createMutation.isPending ? 'Salvando...' : 'Salvar'}
+              </button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
