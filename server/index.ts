@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { healthRouter } from "./routes/health.js";
+import { meRouter } from "./routes/me.js";
 import { clientsRouter } from "./routes/clients.js";
 import { professionalsRouter } from "./routes/professionals.js";
 import { servicesRouter } from "./routes/services.js";
@@ -16,6 +17,7 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/api", healthRouter);
 
 // Authenticated resource routes
+app.use("/api/me", meRouter);
 app.use("/api/clients", clientsRouter);
 app.use("/api/professionals", professionalsRouter);
 app.use("/api/services", servicesRouter);

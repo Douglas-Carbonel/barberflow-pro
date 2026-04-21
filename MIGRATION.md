@@ -92,6 +92,7 @@ server/
 │   └── error.ts            — errorHandler único
 └── routes/
     ├── health.ts                — GET /api/health
+    ├── me.ts                    — GET /api/me  (profile + tenant + role)
     ├── clients.ts               — CRUD /api/clients
     ├── professionals.ts         — CRUD /api/professionals
     ├── services.ts              — CRUD /api/services
@@ -141,7 +142,7 @@ junto (endpoint + frontend) para reduzir o tempo em estado “meio migrado”.
 | # | Endpoint | Página | Notas |
 |---|---|---|---|
 | 5 | `POST /api/onboarding` | `Onboarding.tsx` | Faz tudo num só request; idealmente num RPC ou transação |
-| 6 | `GET /api/me` | `AuthContext.tsx` | Substitui as 3 queries de profile/tenant/role por uma só |
+| ✅ 6 | `GET /api/me` | `AuthContext.tsx` | Substituiu as 3 queries de profile/tenant/role por uma só |
 
 ### Fase D — Substituição do Supabase Auth (último passo)
 
@@ -169,7 +170,7 @@ arquivos abaixo:
 - [x] `src/pages/Servicos.tsx` — migrado (services + service-categories)
 - [ ] `src/pages/Agenda.tsx` — 3 chamadas (+ as queries de listagem)
 - [ ] `src/pages/Onboarding.tsx` — 7 chamadas
-- [ ] `src/contexts/AuthContext.tsx` — 3 chamadas a `from(...)` (auth.* permanece)
+- [x] `src/contexts/AuthContext.tsx` — leitura de profile/tenant/role migrada para `GET /api/me` (auth.* permanece)
 
 O arquivo `src/integrations/supabase/client.ts` só pode ser **deletado** depois
 que `AuthContext` parar de importá-lo (Fase D).

@@ -1,7 +1,14 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import type { Profile, Tenant, AppRole } from '@/types/database';
+
+interface MeResponse {
+  profile: Profile | null;
+  tenant: Tenant | null;
+  role: AppRole | null;
+}
 
 interface AuthContextType {
   session: Session | null;
@@ -26,40 +33,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchUserData = async (userId: string) => {
+  const fetchUserData = async (_userId: string) => {
     try {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (profileData) {
-        setProfile(profileData as Profile);
-
-        if (profileData.tenant_id) {
-          const { data: tenantData } = await supabase
-            .from('tenants')
-            .select('*')
-            .eq('id', profileData.tenant_id)
-            .single();
-          setTenant(tenantData as Tenant | null);
-        } else {
-          setTenant(null);
-        }
-
-        const { data: roleData } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', userId)
-          .limit(1)
-          .maybeSingle();
-        setRole(roleData ? (roleData.role as AppRole) : null);
-      } else {
-        setProfile(null);
-        setTenant(null);
-        setRole(null);
-      }
+      const me = await api<MeResponse>('/api/me');
+      setProfile(me.profile);
+      setTenant(me.tenant);
+      setRole(me.role);
     } catch (err) {
       console.error('Error fetching user data:', err);
       setProfile(null);
