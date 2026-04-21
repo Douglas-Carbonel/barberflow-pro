@@ -1,9 +1,32 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { applyBrandingColor, DEFAULT_PRIMARY_COLOR } from '@/lib/theme';
-import { Scissors, Palette, Image as ImageIcon, Save, RotateCcw } from 'lucide-react';
+import { Scissors, Palette, Image as ImageIcon, Save, RotateCcw, Upload, Trash2 } from 'lucide-react';
+
+async function fileToResizedDataUrl(file: File, maxSize = 320): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('canvas context unavailable'));
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => reject(new Error('imagem inválida'));
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => reject(new Error('falha ao ler arquivo'));
+    reader.readAsDataURL(file);
+  });
+}
 
 const PRESET_COLORS = [
   '#f59e0b', '#ef4444', '#8b5cf6', '#3b82f6',
@@ -17,6 +40,8 @@ export default function Configuracoes() {
   const [primaryColor, setPrimaryColor] = useState(DEFAULT_PRIMARY_COLOR);
   const [tenantName, setTenantName] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (tenant) {
@@ -95,23 +120,106 @@ export default function Configuracoes() {
           />
         </div>
 
-        {/* Logo URL */}
-        <div className="space-y-2">
+        {/* Logo */}
+        <div className="space-y-3">
           <label className="text-sm font-medium text-foreground flex items-center gap-2">
             <ImageIcon className="h-3.5 w-3.5" />
-            URL do logo
+            Logo da empresa
           </label>
-          <input
-            type="url"
-            value={logoUrl}
-            onChange={(e) => setLogoUrl(e.target.value)}
-            data-testid="input-logo-url"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary"
-            placeholder="https://exemplo.com/logo.png"
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Cole o link de uma imagem hospedada na internet. Deixe em branco para usar o ícone padrão.
-          </p>
+
+          <div className="flex items-start gap-4">
+            {/* Preview thumbnail */}
+            <div className="h-20 w-20 rounded-lg border border-border bg-secondary flex items-center justify-center overflow-hidden flex-shrink-0">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Pré-visualização do logo"
+                  data-testid="img-logo-preview"
+                  className="h-full w-full object-contain"
+                />
+              ) : (
+                <Scissors className="h-7 w-7 text-muted-foreground" />
+              )}
+            </div>
+
+            <div className="flex-1 space-y-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 3 * 1024 * 1024) {
+                    toast({
+                      title: 'Imagem muito grande',
+                      description: 'Use um arquivo de até 3MB.',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
+                  setUploading(true);
+                  try {
+                    const dataUrl = await fileToResizedDataUrl(file);
+                    setLogoUrl(dataUrl);
+                  } catch (err) {
+                    toast({
+                      title: 'Não foi possível ler a imagem',
+                      description: (err as Error).message,
+                      variant: 'destructive',
+                    });
+                  } finally {
+                    setUploading(false);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                  }
+                }}
+                data-testid="input-logo-file"
+                className="hidden"
+              />
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  data-testid="button-upload-logo"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 text-sm text-foreground border border-border disabled:opacity-50"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  {uploading ? 'Processando...' : 'Enviar imagem'}
+                </button>
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setLogoUrl('')}
+                    data-testid="button-remove-logo"
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remover
+                  </button>
+                )}
+              </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Aceita PNG, JPG, WEBP ou SVG. A imagem será redimensionada automaticamente.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1 pt-2 border-t border-border/50">
+            <label className="text-[11px] uppercase tracking-widest text-muted-foreground">
+              Ou cole uma URL
+            </label>
+            <input
+              type="url"
+              value={logoUrl.startsWith('data:') ? '' : logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              data-testid="input-logo-url"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary"
+              placeholder="https://exemplo.com/logo.png"
+            />
+          </div>
         </div>
 
         {/* Color picker */}
