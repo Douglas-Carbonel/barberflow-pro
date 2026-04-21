@@ -43,3 +43,14 @@ Stored as Replit environment variables (shared):
 - Migrated from Lovable to Replit. Removed `lovable-tagger` dev dependency from vite config.
 - CSS `@import` for Google Fonts moved before Tailwind directives to fix build warning.
 - Dev server configured for `0.0.0.0` host on port 5000 with `allowedHosts: true` for Replit proxy compatibility.
+
+## PWA (Mobile-First)
+
+The app is configured as a Progressive Web App focused on mobile usage.
+
+- Plugin: `vite-plugin-pwa` with `registerType: "autoUpdate"`.
+- Manifest defined inline in `vite.config.ts` (name, theme/background `#0f172a`, `display: standalone`, `orientation: portrait`, lang `pt-BR`).
+- Icons: `public/icon.svg` and `public/apple-touch-icon.svg`.
+- `index.html` includes PWA meta tags (theme-color, apple-mobile-web-app-*, manifest link, viewport with `viewport-fit=cover`).
+- Service worker registered via `src/components/PWAUpdatePrompt.tsx`, which shows a Sonner toast when a new version is ready.
+- Dev mode: PWA is enabled in dev (`devOptions.enabled: true`) so the SW can be tested while developing.

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RequireAuth, RequireOnboarded, RedirectIfAuth, RequireNotOnboarded } from "@/components/AuthGuards";
 import AppLayout from "@/components/AppLayout";
+import PWAUpdatePrompt from "@/components/PWAUpdatePrompt";
 import LandingPage from "@/pages/LandingPage";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -29,6 +30,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <PWAUpdatePrompt />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
