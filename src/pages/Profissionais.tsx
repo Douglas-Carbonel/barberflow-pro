@@ -9,7 +9,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { Professional } from '@/types/database';
 
@@ -42,13 +42,7 @@ export default function Profissionais() {
   const { data: professionals = [], isLoading } = useQuery<Professional[]>({
     queryKey: ['/api/professionals', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('professionals').select('*').eq('tenant_id', tenantId!)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Professional[];
-    },
+    queryFn: () => api<Professional[]>('/api/professionals'),
   });
 
   const saveMutation = useMutation({
@@ -68,13 +62,9 @@ export default function Profissionais() {
         work_end: input.work_end + ':00',
       };
       if (editingId) {
-        const { error } = await supabase.from('professionals').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await api(`/api/professionals/${editingId}`, { method: 'PATCH', body: payload });
       } else {
-        const { error } = await supabase.from('professionals').insert({
-          tenant_id: tenantId, working_days: [1, 2, 3, 4, 5, 6], ...payload,
-        });
-        if (error) throw error;
+        await api('/api/professionals', { method: 'POST', body: payload });
       }
     },
     onSuccess: () => {
@@ -86,10 +76,7 @@ export default function Profissionais() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('professionals').update({ is_active: false }).eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/api/professionals/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/professionals', tenantId] });
       toast({ title: 'Profissional removido' });

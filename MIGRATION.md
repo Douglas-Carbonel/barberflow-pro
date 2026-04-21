@@ -91,8 +91,11 @@ server/
 │   ├── auth.ts             — requireAuth, requireTenant (+ AuthedRequest)
 │   └── error.ts            — errorHandler único
 └── routes/
-    ├── health.ts           — GET /api/health
-    └── clients.ts          — GET/POST/PATCH/DELETE /api/clients
+    ├── health.ts                — GET /api/health
+    ├── clients.ts               — CRUD /api/clients
+    ├── professionals.ts         — CRUD /api/professionals
+    ├── services.ts              — CRUD /api/services
+    └── service-categories.ts    — CRUD /api/service-categories
 ```
 
 Frontend ganhou:
@@ -121,11 +124,11 @@ junto (endpoint + frontend) para reduzir o tempo em estado “meio migrado”.
 
 ### Fase A — CRUDs simples de cadastro (1 página por vez)
 
-| # | Endpoint | Página | Esforço |
+| # | Endpoint | Página | Status |
 |---|---|---|---|
-| ✅ 1 | `/api/clients` (GET, POST, PATCH, DELETE) | `Clientes.tsx` | feito como prova |
-| 2 | `/api/services` + `/api/service-categories` | `Servicos.tsx` | baixo |
-| 3 | `/api/professionals` | `Profissionais.tsx` | baixo |
+| ✅ 1 | `/api/clients` (GET, POST, PATCH, DELETE) | `Clientes.tsx` | migrado |
+| ✅ 2 | `/api/professionals` (GET, POST, PATCH, DELETE) | `Profissionais.tsx` | migrado |
+| ✅ 3 | `/api/services` + `/api/service-categories` | `Servicos.tsx` | migrado |
 
 ### Fase B — Recurso central com joins
 
@@ -162,8 +165,8 @@ Conforme cada endpoint da seção 4 ficar pronto, removemos o uso direto nos
 arquivos abaixo:
 
 - [x] `src/pages/Clientes.tsx` — migrado
-- [ ] `src/pages/Servicos.tsx` — 6 chamadas
-- [ ] `src/pages/Profissionais.tsx` — 3 chamadas
+- [x] `src/pages/Profissionais.tsx` — migrado
+- [x] `src/pages/Servicos.tsx` — migrado (services + service-categories)
 - [ ] `src/pages/Agenda.tsx` — 3 chamadas (+ as queries de listagem)
 - [ ] `src/pages/Onboarding.tsx` — 7 chamadas
 - [ ] `src/contexts/AuthContext.tsx` — 3 chamadas a `from(...)` (auth.* permanece)

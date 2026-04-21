@@ -10,7 +10,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { Service, ServiceCategory } from '@/types/database';
 
@@ -49,24 +49,13 @@ export default function Servicos() {
   const { data: services = [], isLoading } = useQuery<Service[]>({
     queryKey: ['/api/services', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('services').select('*').eq('tenant_id', tenantId!)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Service[];
-    },
+    queryFn: () => api<Service[]>('/api/services'),
   });
 
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
-    queryKey: ['/api/service_categories', tenantId],
+    queryKey: ['/api/service-categories', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('service_categories').select('*').eq('tenant_id', tenantId!).order('sort_order');
-      if (error) throw error;
-      return (data ?? []) as ServiceCategory[];
-    },
+    queryFn: () => api<ServiceCategory[]>('/api/service-categories'),
   });
 
   const saveService = useMutation({
@@ -85,11 +74,9 @@ export default function Servicos() {
         price, duration, commission_rate: commission,
       };
       if (editingId) {
-        const { error } = await supabase.from('services').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await api(`/api/services/${editingId}`, { method: 'PATCH', body: payload });
       } else {
-        const { error } = await supabase.from('services').insert({ tenant_id: tenantId, ...payload });
-        if (error) throw error;
+        await api('/api/services', { method: 'POST', body: payload });
       }
     },
     onSuccess: () => {
@@ -103,20 +90,15 @@ export default function Servicos() {
   const saveCategory = useMutation({
     mutationFn: async (name: string) => {
       if (!tenantId) throw new Error('Sem tenant');
+      const payload = { name: name.trim() };
       if (editingCatId) {
-        const { error } = await supabase.from('service_categories')
-          .update({ name: name.trim() }).eq('id', editingCatId);
-        if (error) throw error;
+        await api(`/api/service-categories/${editingCatId}`, { method: 'PATCH', body: payload });
       } else {
-        const sort_order = (categories[categories.length - 1]?.sort_order ?? 0) + 1;
-        const { error } = await supabase.from('service_categories').insert({
-          tenant_id: tenantId, name: name.trim(), sort_order,
-        });
-        if (error) throw error;
+        await api('/api/service-categories', { method: 'POST', body: payload });
       }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/service_categories', tenantId] });
+      qc.invalidateQueries({ queryKey: ['/api/service-categories', tenantId] });
       qc.invalidateQueries({ queryKey: ['/api/services', tenantId] });
       toast({ title: editingCatId ? 'Categoria atualizada' : 'Categoria criada' });
       closeCatDialog();
@@ -125,10 +107,7 @@ export default function Servicos() {
   });
 
   const deleteService = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('services').update({ is_active: false }).eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/api/services/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/services', tenantId] });
       toast({ title: 'Serviço removido' });
@@ -138,19 +117,16 @@ export default function Servicos() {
   });
 
   const deleteCategory = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('service_categories').delete().eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/api/service-categories/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['/api/service_categories', tenantId] });
+      qc.invalidateQueries({ queryKey: ['/api/service-categories', tenantId] });
       qc.invalidateQueries({ queryKey: ['/api/services', tenantId] });
       toast({ title: 'Categoria removida' });
       setDeleteTarget(null);
     },
     onError: (err: Error) => toast({
       title: 'Erro ao remover',
-      description: err.message.includes('foreign')
+      description: err.message.toLowerCase().includes('foreign')
         ? 'Existem serviços nesta categoria. Mova-os antes de excluir.'
         : err.message,
       variant: 'destructive',

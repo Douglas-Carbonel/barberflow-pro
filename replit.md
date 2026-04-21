@@ -4,7 +4,7 @@ A Brazilian salon/beauty business management app (SaaS) built with React + Vite 
 
 ## Backend migration (in progress)
 
-The frontend is being moved off direct Supabase calls onto an internal Express API under `server/`. Strategy and progress are tracked in `MIGRATION.md`. The dev script `npm run dev` now runs Vite (port 5000) and the API (port 3001) in parallel via `concurrently`; Vite proxies `/api/*` to the API. Auth still uses Supabase Auth — the API trusts the Supabase JWT and creates a per-request Supabase client so RLS continues to enforce multi-tenancy. Migrated pages so far: `Clientes.tsx`.
+The frontend is being moved off direct Supabase calls onto an internal Express API under `server/`. Strategy and progress are tracked in `MIGRATION.md`. The dev script `npm run dev` now runs Vite (port 5000) and the API (port 3001) in parallel via `concurrently`; Vite proxies `/api/*` to the API. Auth still uses Supabase Auth — the API trusts the Supabase JWT and creates a per-request Supabase client so RLS continues to enforce multi-tenancy. Migrated pages so far: `Clientes.tsx`, `Profissionais.tsx`, `Servicos.tsx` (services + service-categories).
 
 ## Architecture
 
