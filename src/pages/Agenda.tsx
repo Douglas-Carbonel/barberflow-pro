@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Plus, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { Clock, Plus, ChevronLeft, ChevronRight, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -74,12 +78,13 @@ function addMinutesToTime(time: string, minutes: number): string {
   return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}:00`;
 }
 
-interface NewAppointment {
+interface ApptForm {
   client_id: string;
   professional_id: string;
   service_id: string;
   date: string;
   start_time: string;
+  status: AppointmentStatus;
 }
 
 export default function Agenda() {
@@ -89,8 +94,11 @@ export default function Agenda() {
   const [date, setDate] = useState<string>(todayISO());
   const [selectedProfessional, setSelectedProfessional] = useState('all');
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<NewAppointment>({
-    client_id: '', professional_id: '', service_id: '', date: todayISO(), start_time: '09:00',
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [form, setForm] = useState<ApptForm>({
+    client_id: '', professional_id: '', service_id: '',
+    date: todayISO(), start_time: '09:00', status: 'agendado',
   });
 
   const tenantId = tenant?.id;
@@ -100,11 +108,8 @@ export default function Agenda() {
     enabled: !!tenantId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('professionals')
-        .select('*')
-        .eq('tenant_id', tenantId!)
-        .eq('is_active', true)
-        .order('name');
+        .from('professionals').select('*').eq('tenant_id', tenantId!)
+        .eq('is_active', true).order('name');
       if (error) throw error;
       return (data ?? []) as Professional[];
     },
@@ -115,11 +120,8 @@ export default function Agenda() {
     enabled: !!tenantId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('services')
-        .select('*')
-        .eq('tenant_id', tenantId!)
-        .eq('is_active', true)
-        .order('name');
+        .from('services').select('*').eq('tenant_id', tenantId!)
+        .eq('is_active', true).order('name');
       if (error) throw error;
       return (data ?? []) as Service[];
     },
@@ -130,11 +132,8 @@ export default function Agenda() {
     enabled: !!tenantId,
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('clients')
-        .select('*')
-        .eq('tenant_id', tenantId!)
-        .eq('is_active', true)
-        .order('name');
+        .from('clients').select('*').eq('tenant_id', tenantId!)
+        .eq('is_active', true).order('name');
       if (error) throw error;
       return (data ?? []) as Client[];
     },
@@ -161,14 +160,13 @@ export default function Agenda() {
     },
   });
 
-  const createMutation = useMutation({
-    mutationFn: async (input: NewAppointment) => {
+  const saveMutation = useMutation({
+    mutationFn: async (input: ApptForm) => {
       if (!tenantId) throw new Error('Sem tenant');
       const service = services.find((s) => s.id === input.service_id);
       if (!service) throw new Error('Serviço inválido');
       const end_time = addMinutesToTime(input.start_time, service.duration);
-      const { error } = await supabase.from('appointments').insert({
-        tenant_id: tenantId,
+      const payload = {
         client_id: input.client_id,
         professional_id: input.professional_id,
         service_id: input.service_id,
@@ -177,18 +175,38 @@ export default function Agenda() {
         end_time,
         duration: service.duration,
         price: service.price,
-        status: 'agendado' as AppointmentStatus,
-      });
+        status: input.status,
+      };
+      if (editingId) {
+        const { error } = await supabase.from('appointments').update(payload).eq('id', editingId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('appointments')
+          .insert({ tenant_id: tenantId, ...payload });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['/api/appointments', tenantId] });
+      toast({ title: editingId ? 'Agendamento atualizado' : 'Agendamento criado' });
+      closeDialog();
+    },
+    onError: (err: Error) =>
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('appointments').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/appointments', tenantId] });
-      toast({ title: 'Agendamento criado' });
-      setOpen(false);
+      toast({ title: 'Agendamento excluído' });
+      setDeleteId(null);
     },
-    onError: (err: Error) => {
-      toast({ title: 'Erro ao agendar', description: err.message, variant: 'destructive' });
-    },
+    onError: (err: Error) =>
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
   });
 
   const visibleProfessionals = useMemo(() => {
@@ -201,21 +219,40 @@ export default function Agenda() {
     return appointments.filter((a) => a.professional_id === selectedProfessional);
   }, [appointments, selectedProfessional]);
 
+  const openNew = () => {
+    setEditingId(null);
+    setForm({
+      client_id: '', professional_id: '', service_id: '',
+      date, start_time: '09:00', status: 'agendado',
+    });
+    setOpen(true);
+  };
+
+  const openEdit = (a: JoinedAppointment) => {
+    setEditingId(a.id);
+    setForm({
+      client_id: a.client_id,
+      professional_id: a.professional_id,
+      service_id: a.service_id,
+      date: a.date,
+      start_time: a.start_time.slice(0, 5),
+      status: a.status,
+    });
+    setOpen(true);
+  };
+
+  const closeDialog = () => {
+    setOpen(false);
+    setEditingId(null);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.client_id || !form.professional_id || !form.service_id) {
       toast({ title: 'Preencha todos os campos', variant: 'destructive' });
       return;
     }
-    createMutation.mutate(form);
-  };
-
-  const openNewDialog = () => {
-    setForm({
-      client_id: '', professional_id: '', service_id: '',
-      date, start_time: '09:00',
-    });
-    setOpen(true);
+    saveMutation.mutate(form);
   };
 
   return (
@@ -228,7 +265,7 @@ export default function Agenda() {
           </p>
         </div>
         <button
-          onClick={openNewDialog}
+          onClick={openNew}
           data-testid="button-new-appointment"
           className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2 w-fit"
         >
@@ -236,7 +273,6 @@ export default function Agenda() {
         </button>
       </div>
 
-      {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1 bg-secondary rounded-lg px-2 py-1">
           <button onClick={() => setDate(shiftDate(date, -1))} data-testid="button-prev-day" className="p-1 hover:text-foreground text-muted-foreground">
@@ -251,8 +287,7 @@ export default function Agenda() {
         </div>
 
         <input
-          type="date"
-          value={date}
+          type="date" value={date}
           onChange={(e) => setDate(e.target.value)}
           data-testid="input-date"
           className="bg-secondary text-foreground text-xs rounded-lg px-3 py-2 border-none outline-none"
@@ -269,7 +304,6 @@ export default function Agenda() {
         </select>
       </div>
 
-      {/* Day View - Column per professional */}
       <div className="glass-card rounded-xl overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
@@ -299,7 +333,6 @@ export default function Agenda() {
               </div>
 
               {timeSlots.map((time) => {
-                const slotKey = time + ':00';
                 const appts = visibleAppointments.filter((a) => a.start_time.slice(0, 5) === time);
                 return (
                   <div
@@ -313,9 +346,12 @@ export default function Agenda() {
                       return (
                         <div key={prof.id} className="p-1 border-l border-border/50 min-h-[48px]">
                           {appt && (
-                            <div
+                            <button
+                              type="button"
+                              onClick={() => openEdit(appt)}
                               data-testid={`card-appointment-${appt.id}`}
-                              className={`rounded-lg p-2 cursor-pointer hover:opacity-80 transition-opacity ${statusColors[appt.status]}`}
+                              className={`w-full text-left rounded-lg p-2 cursor-pointer hover:opacity-80 transition-opacity ${statusColors[appt.status]}`}
+                              title="Clique para editar"
                             >
                               <p className="text-[11px] font-medium truncate">{appt.client?.name ?? '—'}</p>
                               <p className="text-[10px] opacity-80 truncate">{appt.service?.name ?? '—'}</p>
@@ -324,7 +360,7 @@ export default function Agenda() {
                                 <span className="text-[9px]">{appt.duration}min</span>
                                 <span className="text-[9px] ml-auto font-medium">R$ {Number(appt.price).toFixed(0)}</span>
                               </div>
-                            </div>
+                            </button>
                           )}
                         </div>
                       );
@@ -337,7 +373,6 @@ export default function Agenda() {
         )}
       </div>
 
-      {/* Upcoming List */}
       <div className="glass-card rounded-xl p-5">
         <h3 className="text-sm font-semibold text-foreground mb-3">Agendamentos do Dia</h3>
         {appointments.length === 0 ? (
@@ -347,7 +382,11 @@ export default function Agenda() {
         ) : (
           <div className="space-y-2">
             {appointments.map((appt) => (
-              <div key={appt.id} className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors">
+              <div
+                key={appt.id}
+                data-testid={`row-appointment-${appt.id}`}
+                className="flex items-center gap-3 p-3 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors group"
+              >
                 <div className="text-center min-w-[45px]">
                   <p className="text-sm font-bold text-foreground">{appt.start_time.slice(0, 5)}</p>
                   <p className="text-[10px] text-muted-foreground">{appt.duration}min</p>
@@ -362,17 +401,34 @@ export default function Agenda() {
                   {statusLabels[appt.status]}
                 </Badge>
                 <span className="text-sm font-semibold text-foreground">R$ {Number(appt.price).toFixed(0)}</span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => openEdit(appt)}
+                    data-testid={`button-edit-appointment-${appt.id}`}
+                    className="p-1.5 rounded-md bg-background hover:bg-background/70 text-muted-foreground hover:text-foreground"
+                    title="Editar"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  <button
+                    onClick={() => setDeleteId(appt.id)}
+                    data-testid={`button-delete-appointment-${appt.id}`}
+                    className="p-1.5 rounded-md bg-background hover:bg-destructive/20 text-muted-foreground hover:text-destructive"
+                    title="Excluir"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* New appointment dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(o) => !o && closeDialog()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Novo Agendamento</DialogTitle>
+            <DialogTitle>{editingId ? 'Editar Agendamento' : 'Novo Agendamento'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
             <div>
@@ -387,9 +443,6 @@ export default function Agenda() {
                 <option value="">Selecione...</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
-              {clients.length === 0 && (
-                <p className="text-[11px] text-warning mt-1">Cadastre clientes primeiro.</p>
-              )}
             </div>
 
             <div>
@@ -404,9 +457,6 @@ export default function Agenda() {
                 <option value="">Selecione...</option>
                 {professionals.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              {professionals.length === 0 && (
-                <p className="text-[11px] text-warning mt-1">Cadastre profissionais primeiro.</p>
-              )}
             </div>
 
             <div>
@@ -425,17 +475,13 @@ export default function Agenda() {
                   </option>
                 ))}
               </select>
-              {services.length === 0 && (
-                <p className="text-[11px] text-warning mt-1">Cadastre serviços primeiro.</p>
-              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Data *</label>
                 <input
-                  type="date"
-                  value={form.date}
+                  type="date" value={form.date}
                   onChange={(e) => setForm({ ...form, date: e.target.value })}
                   data-testid="input-form-date"
                   className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
@@ -445,8 +491,7 @@ export default function Agenda() {
               <div>
                 <label className="text-xs text-muted-foreground">Horário *</label>
                 <input
-                  type="time"
-                  value={form.start_time}
+                  type="time" value={form.start_time}
                   onChange={(e) => setForm({ ...form, start_time: e.target.value })}
                   data-testid="input-form-start-time"
                   className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
@@ -455,26 +500,67 @@ export default function Agenda() {
               </div>
             </div>
 
-            <DialogFooter>
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
+            <div>
+              <label className="text-xs text-muted-foreground">Status</label>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as AppointmentStatus })}
+                data-testid="select-form-status"
+                className="w-full mt-1 bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-primary"
               >
-                Cancelar
-              </button>
+                {(Object.keys(statusLabels) as AppointmentStatus[]).map((s) => (
+                  <option key={s} value={s}>{statusLabels[s]}</option>
+                ))}
+              </select>
+            </div>
+
+            <DialogFooter>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setDeleteId(editingId);
+                  }}
+                  data-testid="button-delete-from-edit"
+                  className="px-4 py-2 text-sm text-destructive hover:text-destructive/80 mr-auto"
+                >
+                  Excluir
+                </button>
+              )}
+              <button type="button" onClick={closeDialog} className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground">Cancelar</button>
               <button
-                type="submit"
-                disabled={createMutation.isPending}
+                type="submit" disabled={saveMutation.isPending}
                 data-testid="button-save-appointment"
                 className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
               >
-                {createMutation.isPending ? 'Salvando...' : 'Agendar'}
+                {saveMutation.isPending ? 'Salvando...' : 'Salvar'}
               </button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteId} onOpenChange={(o) => !o && setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir agendamento?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O agendamento será removido permanentemente. Para apenas marcar como cancelado, use o status "Cancelado" na edição.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              data-testid="button-confirm-delete-appointment"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
