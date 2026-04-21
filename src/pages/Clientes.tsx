@@ -10,7 +10,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { Client } from '@/types/database';
 
@@ -46,33 +46,24 @@ export default function Clientes() {
   const { data: clients = [], isLoading } = useQuery<Client[]>({
     queryKey: ['/api/clients', tenant?.id],
     enabled: !!tenant?.id,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients').select('*').eq('tenant_id', tenant!.id)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Client[];
-    },
+    queryFn: () => api<Client[]>('/api/clients'),
   });
 
   const saveMutation = useMutation({
     mutationFn: async (input: ClientForm) => {
       if (!tenant?.id) throw new Error('Sem tenant');
-      const tags = input.tags.split(',').map((t) => t.trim()).filter(Boolean);
       const payload = {
         name: input.name.trim(),
         phone: input.phone.trim() || null,
         email: input.email.trim() || null,
         birthday: input.birthday || null,
         notes: input.notes.trim() || null,
-        tags,
+        tags: input.tags.split(',').map((t) => t.trim()).filter(Boolean),
       };
       if (editingId) {
-        const { error } = await supabase.from('clients').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await api(`/api/clients/${editingId}`, { method: 'PATCH', body: payload });
       } else {
-        const { error } = await supabase.from('clients').insert({ tenant_id: tenant.id, ...payload });
-        if (error) throw error;
+        await api('/api/clients', { method: 'POST', body: payload });
       }
     },
     onSuccess: () => {
@@ -84,10 +75,7 @@ export default function Clientes() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('clients').update({ is_active: false }).eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/api/clients/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/clients', tenant?.id] });
       toast({ title: 'Cliente removido' });

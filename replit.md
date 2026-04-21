@@ -2,6 +2,10 @@
 
 A Brazilian salon/beauty business management app (SaaS) built with React + Vite + TypeScript. Features include scheduling (Agenda), client management, services, professionals, goals, reports, financials, and subscriptions. Uses Supabase as the backend (auth + database).
 
+## Backend migration (in progress)
+
+The frontend is being moved off direct Supabase calls onto an internal Express API under `server/`. Strategy and progress are tracked in `MIGRATION.md`. The dev script `npm run dev` now runs Vite (port 5000) and the API (port 3001) in parallel via `concurrently`; Vite proxies `/api/*` to the API. Auth still uses Supabase Auth — the API trusts the Supabase JWT and creates a per-request Supabase client so RLS continues to enforce multi-tenancy. Migrated pages so far: `Clientes.tsx`.
+
 ## Architecture
 
 - **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, shadcn/ui components
