@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { applyBrandingColor, resetBrandingColor } from "@/lib/theme";
 import MobileHeader from "@/components/MobileHeader";
 import MobileBottomNav from "@/components/MobileBottomNav";
+import MobileFab from "@/components/MobileFab";
 
 export default function AppLayout() {
   const { profile, tenant } = useAuth();
@@ -57,13 +58,14 @@ export default function AppLayout() {
             </div>
           </header>
 
-          <main className="flex-1 p-4 md:p-6 overflow-auto pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">
+          <main className="flex-1 p-4 md:p-6 overflow-auto pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-6">
             <Outlet />
           </main>
         </div>
 
-        {/* Mobile bottom nav */}
+        {/* Mobile bottom nav + floating action button */}
         <MobileBottomNav />
+        <MobileFab />
       </div>
     </SidebarProvider>
   );
