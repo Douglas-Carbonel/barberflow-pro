@@ -1,6 +1,6 @@
 import { 
   LayoutDashboard, Calendar, Users, Scissors, UserCog, Target, 
-  BarChart3, DollarSign, CreditCard, LogOut,
+  BarChart3, DollarSign, CreditCard, LogOut, Settings,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import {
@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { PoweredByBadge } from '@/components/PoweredByBadge';
 
 const mainNav = [
   { title: 'Dashboard', url: '/app', icon: LayoutDashboard },
@@ -24,6 +25,7 @@ const businessNav = [
   { title: 'Relatórios', url: '/app/relatorios', icon: BarChart3 },
   { title: 'Financeiro', url: '/app/financeiro', icon: DollarSign },
   { title: 'Assinaturas', url: '/app/assinaturas', icon: CreditCard },
+  { title: 'Configurações', url: '/app/configuracoes', icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -45,14 +47,25 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <Scissors className="h-5 w-5 text-primary-foreground" />
+          <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+            {tenant?.logo_url ? (
+              <img
+                src={tenant.logo_url}
+                alt={tenant.name}
+                className="h-full w-full object-cover"
+                data-testid="img-tenant-logo"
+              />
+            ) : (
+              <Scissors className="h-5 w-5 text-primary-foreground" />
+            )}
           </div>
           {!collapsed && (
-            <div className="flex flex-col">
-              <span className="font-bold text-foreground text-sm tracking-tight">BarberFlow</span>
-              <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+            <div className="flex flex-col min-w-0">
+              <span className="font-bold text-foreground text-sm tracking-tight truncate">
                 {tenant?.name ?? 'Minha Barbearia'}
+              </span>
+              <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
+                Painel de Gestão
               </span>
             </div>
           )}
@@ -136,6 +149,12 @@ export function AppSidebar() {
           <LogOut className="h-4 w-4 flex-shrink-0" />
           {!collapsed && <span>Sair</span>}
         </button>
+
+        {!collapsed && (
+          <div className="pt-2 border-t border-sidebar-border/50 flex justify-center">
+            <PoweredByBadge />
+          </div>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

@@ -1,11 +1,18 @@
+import { useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { Bell, Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { applyBrandingColor, resetBrandingColor } from '@/lib/theme';
 
 export default function AppLayout() {
   const { profile, tenant } = useAuth();
+
+  useEffect(() => {
+    applyBrandingColor(tenant?.primary_color);
+    return () => resetBrandingColor();
+  }, [tenant?.primary_color]);
 
   return (
     <SidebarProvider>

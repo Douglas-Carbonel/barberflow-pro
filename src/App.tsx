@@ -19,6 +19,7 @@ import Metas from "@/pages/Metas";
 import Relatorios from "@/pages/Relatorios";
 import Financeiro from "@/pages/Financeiro";
 import Assinaturas from "@/pages/Assinaturas";
+import Configuracoes from "@/pages/Configuracoes";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -45,6 +46,7 @@ const App = () => (
               <Route path="relatorios" element={<Relatorios />} />
               <Route path="financeiro" element={<Financeiro />} />
               <Route path="assinaturas" element={<Assinaturas />} />
+              <Route path="configuracoes" element={<Configuracoes />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

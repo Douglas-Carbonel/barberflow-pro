@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Scissors, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PoweredByBadge } from '@/components/PoweredByBadge';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -34,7 +35,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -106,6 +107,9 @@ export default function Login() {
             </p>
           </div>
         </div>
+      </div>
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+        <PoweredByBadge />
       </div>
     </div>
   );

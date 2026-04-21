@@ -7,6 +7,7 @@ import {
   Scissors, Store, Clock, Wrench, Users, CreditCard,
   ChevronRight, ChevronLeft, Check, Plus, X
 } from 'lucide-react';
+import { PoweredByBadge } from '@/components/PoweredByBadge';
 
 interface OnboardingData {
   barbershopName: string;
@@ -260,7 +261,7 @@ export default function Onboarding() {
   if (createdTenantId) {
     const shortId = createdTenantId.split('-')[0].toUpperCase();
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative pb-12">
         <div className="w-full max-w-md text-center">
           <div className="inline-flex items-center gap-2 mb-6">
             <div className="h-10 w-10 rounded-lg bg-primary flex items-center justify-center">
@@ -306,7 +307,7 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative pb-12">
       <div className="w-full max-w-2xl">
         {/* Header */}
         <div className="text-center mb-6">
@@ -555,6 +556,9 @@ export default function Onboarding() {
             )}
           </div>
         </div>
+      </div>
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+        <PoweredByBadge />
       </div>
     </div>
   );

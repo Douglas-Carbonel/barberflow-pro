@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Scissors, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PoweredByBadge } from '@/components/PoweredByBadge';
 
 export default function Register() {
   const [fullName, setFullName] = useState('');
@@ -37,7 +38,7 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 relative">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
@@ -122,6 +123,9 @@ export default function Register() {
             </p>
           </div>
         </div>
+      </div>
+      <div className="absolute bottom-4 left-0 right-0 flex justify-center">
+        <PoweredByBadge />
       </div>
     </div>
   );

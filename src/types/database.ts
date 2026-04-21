@@ -14,6 +14,7 @@ export interface Tenant {
   name: string
   slug: string
   logo_url: string | null
+  primary_color: string | null
   phone: string | null
   email: string | null
   address: string | null
