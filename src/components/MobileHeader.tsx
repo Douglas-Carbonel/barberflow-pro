@@ -25,13 +25,13 @@ export default function MobileHeader() {
 
   return (
     <header
-      className="md:hidden sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border"
+      className="md:hidden sticky top-0 z-30 bg-background/70 backdrop-blur-xl"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="h-14 flex items-center justify-between px-4">
+      <div className="h-16 flex items-center justify-between px-4">
         <div className="flex items-center gap-3 min-w-0">
           {isHome ? (
-            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center flex-shrink-0 overflow-hidden">
+            <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-lg shadow-primary/30">
               {tenant?.logo_url ? (
                 <img
                   src={tenant.logo_url}
@@ -45,29 +45,33 @@ export default function MobileHeader() {
           ) : (
             <button
               onClick={() => navigate(-1)}
-              className="-ml-2 p-2 rounded-lg hover:bg-secondary transition-colors"
+              className="h-10 w-10 -ml-1 rounded-full bg-secondary/80 hover:bg-secondary flex items-center justify-center transition-colors active:scale-95"
               aria-label="Voltar"
               data-testid="button-back"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="h-4 w-4" />
             </button>
           )}
           <div className="min-w-0">
-            <h1 className="text-base font-semibold truncate">{title}</h1>
-            {isHome && (
-              <p className="text-[11px] text-muted-foreground truncate">
-                {tenant?.name ?? "Minha Barbearia"}
-              </p>
+            {isHome ? (
+              <>
+                <p className="text-[11px] text-muted-foreground">Olá,</p>
+                <h1 className="text-base font-semibold truncate leading-tight">
+                  {tenant?.name ?? "Minha Barbearia"}
+                </h1>
+              </>
+            ) : (
+              <h1 className="text-lg font-semibold truncate">{title}</h1>
             )}
           </div>
         </div>
 
         <button
-          className="relative p-2 rounded-lg hover:bg-secondary transition-colors"
+          className="relative h-10 w-10 rounded-full bg-secondary/80 hover:bg-secondary flex items-center justify-center transition-colors active:scale-95"
           aria-label="Notificações"
         >
-          <Bell className="h-5 w-5 text-muted-foreground" />
-          <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-primary rounded-full" />
+          <Bell className="h-4 w-4" />
+          <span className="absolute top-2 right-2 h-2 w-2 bg-primary rounded-full ring-2 ring-background" />
         </button>
       </div>
     </header>
