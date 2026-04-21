@@ -96,7 +96,8 @@ server/
     ├── clients.ts               — CRUD /api/clients
     ├── professionals.ts         — CRUD /api/professionals
     ├── services.ts              — CRUD /api/services
-    └── service-categories.ts    — CRUD /api/service-categories
+    ├── service-categories.ts    — CRUD /api/service-categories
+    └── appointments.ts          — CRUD /api/appointments  (joins client/professional/service)
 ```
 
 Frontend ganhou:
@@ -135,7 +136,7 @@ junto (endpoint + frontend) para reduzir o tempo em estado “meio migrado”.
 
 | # | Endpoint | Página | Notas |
 |---|---|---|---|
-| 4 | `/api/appointments` | `Agenda.tsx` | GET deve embutir cliente/serviço/profissional para evitar N+1 |
+| ✅ 4 | `/api/appointments` | `Agenda.tsx` | GET embute `client(name)` / `professional(name)` / `service(name)` via PostgREST nested select; `end_time` / `duration` / `price` derivados server-side a partir do serviço |
 
 ### Fase C — Fluxo transacional
 
@@ -168,7 +169,7 @@ arquivos abaixo:
 - [x] `src/pages/Clientes.tsx` — migrado
 - [x] `src/pages/Profissionais.tsx` — migrado
 - [x] `src/pages/Servicos.tsx` — migrado (services + service-categories)
-- [ ] `src/pages/Agenda.tsx` — 3 chamadas (+ as queries de listagem)
+- [x] `src/pages/Agenda.tsx` — migrada (CRUD + listagem hidratada)
 - [ ] `src/pages/Onboarding.tsx` — 7 chamadas
 - [x] `src/contexts/AuthContext.tsx` — leitura de profile/tenant/role migrada para `GET /api/me` (auth.* permanece)
 

@@ -10,7 +10,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import type { Client, Professional, Service, AppointmentStatus } from '@/types/database';
 
@@ -90,14 +90,6 @@ function dayParts(iso: string) {
   };
 }
 
-function addMinutesToTime(time: string, minutes: number): string {
-  const [h, m] = time.split(':').map(Number);
-  const total = h * 60 + m + minutes;
-  const hh = Math.floor(total / 60) % 24;
-  const mm = total % 60;
-  return `${hh.toString().padStart(2, '0')}:${mm.toString().padStart(2, '0')}:00`;
-}
-
 interface ApptForm {
   client_id: string;
   professional_id: string;
@@ -128,84 +120,44 @@ export default function Agenda() {
   const { data: professionals = [] } = useQuery<Professional[]>({
     queryKey: ['/api/professionals', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('professionals').select('*').eq('tenant_id', tenantId!)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Professional[];
-    },
+    queryFn: () => api<Professional[]>('/api/professionals'),
   });
 
   const { data: services = [] } = useQuery<Service[]>({
     queryKey: ['/api/services', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('services').select('*').eq('tenant_id', tenantId!)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Service[];
-    },
+    queryFn: () => api<Service[]>('/api/services'),
   });
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ['/api/clients', tenantId],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clients').select('*').eq('tenant_id', tenantId!)
-        .eq('is_active', true).order('name');
-      if (error) throw error;
-      return (data ?? []) as Client[];
-    },
+    queryFn: () => api<Client[]>('/api/clients'),
   });
 
   const { data: appointments = [], isLoading } = useQuery<JoinedAppointment[]>({
     queryKey: ['/api/appointments', tenantId, date],
     enabled: !!tenantId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('appointments')
-        .select(`
-          id, date, start_time, end_time, duration, price, status,
-          client_id, professional_id, service_id,
-          client:clients(name),
-          professional:professionals(name),
-          service:services(name)
-        `)
-        .eq('tenant_id', tenantId!)
-        .eq('date', date)
-        .order('start_time');
-      if (error) throw error;
-      return (data ?? []) as unknown as JoinedAppointment[];
-    },
+    queryFn: () =>
+      api<JoinedAppointment[]>(`/api/appointments?date=${encodeURIComponent(date)}`),
   });
 
   const saveMutation = useMutation({
     mutationFn: async (input: ApptForm) => {
       if (!tenantId) throw new Error('Sem tenant');
-      const service = services.find((s) => s.id === input.service_id);
-      if (!service) throw new Error('Serviço inválido');
-      const end_time = addMinutesToTime(input.start_time, service.duration);
+      // end_time / duration / price are now derived server-side from the chosen service.
       const payload = {
         client_id: input.client_id,
         professional_id: input.professional_id,
         service_id: input.service_id,
         date: input.date,
-        start_time: input.start_time + ':00',
-        end_time,
-        duration: service.duration,
-        price: service.price,
+        start_time: input.start_time,
         status: input.status,
       };
       if (editingId) {
-        const { error } = await supabase.from('appointments').update(payload).eq('id', editingId);
-        if (error) throw error;
+        await api(`/api/appointments/${editingId}`, { method: 'PATCH', body: payload });
       } else {
-        const { error } = await supabase.from('appointments')
-          .insert({ tenant_id: tenantId, ...payload });
-        if (error) throw error;
+        await api('/api/appointments', { method: 'POST', body: payload });
       }
     },
     onSuccess: () => {
@@ -218,10 +170,7 @@ export default function Agenda() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('appointments').delete().eq('id', id);
-      if (error) throw error;
-    },
+    mutationFn: (id: string) => api(`/api/appointments/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['/api/appointments', tenantId] });
       toast({ title: 'Agendamento excluído' });
