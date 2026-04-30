@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import {
   Scissors, Store, Clock, Wrench, Users, CreditCard,
@@ -48,43 +48,29 @@ const PLANS = [
 
 const STEPS = ['Barbearia', 'Horários', 'Serviços', 'Equipe', 'Plano'];
 
-// Creates a minimal demo tenant and links it to the user's profile.
-// This ensures that next login the user goes straight to /app instead of
-// being bounced back to /onboarding.
-async function createDemoTenant(userId: string, userEmail: string | undefined, barbershopName: string, plan: 'starter' | 'pro' | 'multi_unidade') {
-  const tenantId = crypto.randomUUID();
-  const name = barbershopName.trim() || (userEmail ? `Demo - ${userEmail}` : 'Minha Barbearia');
-  const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Date.now();
+// Single shape used by both the full "Finish" flow and the "Skip" shortcut.
+// The backend validates and orchestrates everything in one transactional call.
+interface OnboardingPayload {
+  barbershop: {
+    name: string;
+    phone?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    opening_time: string;
+    closing_time: string;
+    working_days: number[];
+  };
+  plan: 'starter' | 'pro' | 'multi_unidade';
+  services: { name: string; price: number; duration: number }[];
+  professionals: { name: string; specialty?: string | null }[];
+}
 
-  const { error: tenantError } = await supabase.from('tenants').insert({
-    id: tenantId,
-    name,
-    slug,
-    opening_time: '08:00',
-    closing_time: '20:00',
-    working_days: [1, 2, 3, 4, 5, 6],
-    saas_plan: plan,
+async function postOnboarding(payload: OnboardingPayload): Promise<{ tenant_id: string }> {
+  return api<{ tenant_id: string }>('/api/onboarding', {
+    method: 'POST',
+    body: payload,
   });
-  if (tenantError) throw tenantError;
-
-  const { error: profileError } = await supabase
-    .from('profiles')
-    .update({ tenant_id: tenantId })
-    .eq('id', userId);
-  if (profileError) throw profileError;
-
-  await supabase.from('user_roles').insert({ user_id: userId, tenant_id: tenantId, role: 'owner' });
-
-  const trialEndsAt = new Date();
-  trialEndsAt.setDate(trialEndsAt.getDate() + 15);
-  await supabase.from('tenant_subscriptions').insert({
-    tenant_id: tenantId,
-    plan,
-    status: 'trial',
-    expires_at: trialEndsAt.toISOString(),
-  });
-
-  return tenantId;
 }
 
 export default function Onboarding() {
@@ -136,12 +122,27 @@ export default function Onboarding() {
     updateData({ professionals: updated });
   };
 
-  // Skip: create a minimal demo tenant so the user never gets stuck in this screen again.
+  // Skip: create a minimal tenant so the user never gets stuck in this screen again.
+  // Sends a "blank" payload (just plan + name fallback) to the same endpoint
+  // as Finish — the backend handles defaults for opening_time / working_days.
   const handleSkip = async () => {
     if (!user) return;
     setIsSkipping(true);
     try {
-      await createDemoTenant(user.id, user.email, data.barbershopName, data.plan);
+      const fallbackName =
+        data.barbershopName.trim() ||
+        (user.email ? `Demo - ${user.email}` : 'Minha Barbearia');
+      await postOnboarding({
+        barbershop: {
+          name: fallbackName,
+          opening_time: '08:00',
+          closing_time: '20:00',
+          working_days: [1, 2, 3, 4, 5, 6],
+        },
+        plan: data.plan,
+        services: [],
+        professionals: [],
+      });
       await refreshProfile();
       toast({ title: 'Configuração salva!', description: 'Você pode completar o setup a qualquer momento nas configurações.' });
       navigate('/app');
@@ -158,88 +159,31 @@ export default function Onboarding() {
     setIsSubmitting(true);
 
     try {
-      const slug = data.barbershopName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
-      const tenantId = crypto.randomUUID();
-
-      // 1. Create tenant
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          id: tenantId,
+      const { tenant_id } = await postOnboarding({
+        barbershop: {
           name: data.barbershopName,
-          slug: slug + '-' + Date.now(),
-          phone: data.phone,
-          address: data.address,
-          city: data.city,
-          state: data.state,
+          phone: data.phone || null,
+          address: data.address || null,
+          city: data.city || null,
+          state: data.state || null,
           opening_time: data.openingTime,
           closing_time: data.closingTime,
           working_days: data.workingDays,
-          saas_plan: data.plan,
-        });
-      if (tenantError) throw tenantError;
-
-      // 2. Link profile to tenant
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ tenant_id: tenantId })
-        .eq('id', user.id);
-      if (profileError) throw profileError;
-
-      // 3. Create owner role
-      await supabase.from('user_roles').insert({
-        user_id: user.id,
-        tenant_id: tenantId,
-        role: 'owner',
-      });
-
-      // 4. Create subscription with 15-day trial
-      const trialEndsAt = new Date();
-      trialEndsAt.setDate(trialEndsAt.getDate() + 15);
-      await supabase.from('tenant_subscriptions').insert({
-        tenant_id: tenantId,
+        },
         plan: data.plan,
-        status: 'trial',
-        expires_at: trialEndsAt.toISOString(),
+        services: data.services
+          .filter(s => s.name.trim())
+          .map(s => ({ name: s.name, price: s.price, duration: s.duration })),
+        professionals: data.professionals
+          .filter(p => p.name.trim())
+          .map(p => ({ name: p.name, specialty: p.specialty || null })),
       });
 
-      // 5. Create service categories + services
-      const { data: category } = await supabase
-        .from('service_categories')
-        .insert({ tenant_id: tenantId, name: 'Geral' })
-        .select()
-        .single();
-
-      const validServices = data.services.filter(s => s.name.trim());
-      if (validServices.length > 0 && category) {
-        await supabase.from('services').insert(
-          validServices.map(s => ({
-            tenant_id: tenantId,
-            category_id: category.id,
-            name: s.name,
-            price: s.price,
-            duration: s.duration,
-          }))
-        );
-      }
-
-      // 6. Create professionals
-      const validPros = data.professionals.filter(p => p.name.trim());
-      if (validPros.length > 0) {
-        await supabase.from('professionals').insert(
-          validPros.map(p => ({
-            tenant_id: tenantId,
-            name: p.name,
-            specialty: p.specialty || null,
-          }))
-        );
-      }
-
-      // 7. Refresh auth context so tenant is available immediately
+      // Refresh auth context so the freshly-created tenant is available immediately.
       await refreshProfile();
 
       setFinalBarbershopName(data.barbershopName);
-      setCreatedTenantId(tenantId);
+      setCreatedTenantId(tenant_id);
 
       toast({ title: 'Barbearia criada!', description: `${data.barbershopName} foi configurada com sucesso.` });
     } catch (err: any) {

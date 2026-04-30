@@ -7,6 +7,7 @@ import { professionalsRouter } from "./routes/professionals.js";
 import { servicesRouter } from "./routes/services.js";
 import { serviceCategoriesRouter } from "./routes/service-categories.js";
 import { appointmentsRouter } from "./routes/appointments.js";
+import { onboardingRouter } from "./routes/onboarding.js";
 import { errorHandler } from "./middleware/error.js";
 
 const app = express();
@@ -24,6 +25,7 @@ app.use("/api/professionals", professionalsRouter);
 app.use("/api/services", servicesRouter);
 app.use("/api/service-categories", serviceCategoriesRouter);
 app.use("/api/appointments", appointmentsRouter);
+app.use("/api/onboarding", onboardingRouter);
 
 // 404 for unknown /api routes
 app.use("/api", (_req, res) => {

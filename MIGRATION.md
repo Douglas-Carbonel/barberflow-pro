@@ -16,9 +16,10 @@ Mapeamento do código atual (todas as ocorrências de `supabase.*`):
 | `src/contexts/AuthContext.tsx` | `auth.getSession`, `auth.onAuthStateChange`, `auth.signIn/signUp/signOut` + leitura de `profiles`, `tenants`, `user_roles` |
 | `src/pages/Onboarding.tsx` | INSERT em `tenants`, `profiles` (update), `user_roles`, `tenant_subscriptions`, `service_categories`, `services`, `professionals` |
 | `src/pages/Clientes.tsx` | CRUD de `clients` (já migrado para `/api/clients` ✅) |
-| `src/pages/Servicos.tsx` | CRUD de `services` e `service_categories` |
-| `src/pages/Profissionais.tsx` | CRUD de `professionals` |
-| `src/pages/Agenda.tsx` | CRUD de `appointments` (queries de listagem ainda diretas no Supabase) |
+| `src/pages/Servicos.tsx` | CRUD de `services` e `service_categories` (já migrado para `/api/services` ✅) |
+| `src/pages/Profissionais.tsx` | CRUD de `professionals` (já migrado para `/api/professionals` ✅) |
+| `src/pages/Agenda.tsx` | CRUD de `appointments` (já migrado para `/api/appointments` ✅) |
+| `src/pages/Onboarding.tsx` | Setup transacional do tenant (já migrado para `/api/onboarding` ✅) |
 
 ### Tabelas tocadas
 
@@ -97,7 +98,8 @@ server/
     ├── professionals.ts         — CRUD /api/professionals
     ├── services.ts              — CRUD /api/services
     ├── service-categories.ts    — CRUD /api/service-categories
-    └── appointments.ts          — CRUD /api/appointments  (joins client/professional/service)
+    ├── appointments.ts          — CRUD /api/appointments  (joins client/professional/service)
+    └── onboarding.ts            — POST /api/onboarding   (cria tenant + profile + role + subscription + categoria + serviços + profissionais com rollback compensatório)
 ```
 
 Frontend ganhou:
@@ -142,7 +144,7 @@ junto (endpoint + frontend) para reduzir o tempo em estado “meio migrado”.
 
 | # | Endpoint | Página | Notas |
 |---|---|---|---|
-| 5 | `POST /api/onboarding` | `Onboarding.tsx` | Faz tudo num só request; idealmente num RPC ou transação |
+| ✅ 5 | `POST /api/onboarding` | `Onboarding.tsx` | Faz tudo num só request. Atomicidade via **rollback compensatório** (PostgREST não expõe transação multi-statement); helper interno `rollback()` desfaz na ordem inversa em caso de falha. Vira `BEGIN ... COMMIT` real quando trocarmos pelo Postgres direto na Fase D. |
 | ✅ 6 | `GET /api/me` | `AuthContext.tsx` | Substituiu as 3 queries de profile/tenant/role por uma só |
 
 ### Fase D — Substituição do Supabase Auth (último passo)
@@ -170,7 +172,7 @@ arquivos abaixo:
 - [x] `src/pages/Profissionais.tsx` — migrado
 - [x] `src/pages/Servicos.tsx` — migrado (services + service-categories)
 - [x] `src/pages/Agenda.tsx` — migrada (CRUD + listagem hidratada)
-- [ ] `src/pages/Onboarding.tsx` — 7 chamadas
+- [x] `src/pages/Onboarding.tsx` — migrado para `POST /api/onboarding` (Finish e Skip)
 - [x] `src/contexts/AuthContext.tsx` — leitura de profile/tenant/role migrada para `GET /api/me` (auth.* permanece)
 
 O arquivo `src/integrations/supabase/client.ts` só pode ser **deletado** depois
