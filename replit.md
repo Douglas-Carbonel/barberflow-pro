@@ -6,6 +6,13 @@ A Brazilian salon/beauty business management app (SaaS) built with React + Vite 
 
 The frontend is being moved off direct Supabase calls onto an internal Express API under `server/`. Strategy and progress are tracked in `MIGRATION.md`. The dev script `npm run dev` now runs Vite (port 5000) and the API (port 3001) in parallel via `concurrently`; Vite proxies `/api/*` to the API. Auth still uses Supabase Auth — the API trusts the Supabase JWT and creates a per-request Supabase client so RLS continues to enforce multi-tenancy. Migrated so far: `Clientes.tsx`, `Profissionais.tsx`, `Servicos.tsx` (services + service-categories), `Agenda.tsx` (CRUD + hydrated joins server-side, with `end_time`/`duration`/`price` derived from the chosen service on the server), `Onboarding.tsx` (single transactional `POST /api/onboarding` that creates tenant + profile link + owner role + 15-day-trial subscription + default category + initial services + initial professionals, with compensating rollback on failure since PostgREST has no multi-statement transaction), and the `AuthContext` profile/tenant/role bootstrap (now via `GET /api/me`). Supabase Auth itself is still in place for login/session/JWT.
 
+### Phase D — Postgres + Drizzle migration (in progress)
+
+User decided to move off Supabase entirely, hosting Postgres on their own AWS EC2 with a self-built auth system. The full plan lives in `.local/session_plan.md` (8 phases S1-S8). Current status:
+- **S1 (done)** — Postgres 18 installed on EC2 (Ubuntu), database `barberflow` and role `barberflow` created, `DATABASE_URL` added to the EC2 `.env`.
+- **S2 (done)** — Drizzle ORM installed (`drizzle-orm`, `drizzle-kit`, `pg`, `dotenv`). Schema in `server/db/schema.ts` mirrors the 9 tables actively used by the API today (tenants, profiles, user_roles, tenant_subscriptions, service_categories, services, professionals, clients, appointments) — same column names as Supabase to keep route-by-route migration in S3 mechanical. Connection pool in `server/db/index.ts`. Migration SQL generated at `server/db/migrations/0000_init_schema.sql`. Drizzle Kit config at `drizzle.config.ts` loads `.env` via `dotenv/config` so it works on Node 18 too. New scripts: `db:generate`, `db:migrate`, `db:studio`, `db:check`. **Migration not yet applied to EC2** — user runs `npm run db:migrate` on the EC2 to apply.
+- **S3-S8** — pending: rewrite each API route to use Drizzle, build own auth, frontend cutover, remove Supabase, set up backups.
+
 ## Architecture
 
 - **Frontend**: React 18, Vite, TypeScript, Tailwind CSS, shadcn/ui components
