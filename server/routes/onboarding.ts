@@ -100,12 +100,78 @@ interface RollbackTracker {
   professionalIds?: string[];
 }
 
+/**
+ * Structured logger scoped to a single onboarding request. Every line is
+ * prefixed with `[onboarding][reqId=...]` so a failed run can be grepped
+ * end-to-end (start → each step → rollback events) in production logs.
+ *
+ * The same `requestId` is also returned to the client via the `X-Request-Id`
+ * header so a user reporting a problem can quote it back to support.
+ */
+type Logger = ReturnType<typeof createLogger>;
+
+function createLogger(requestId: string, userId: string) {
+  const prefix = `[onboarding][reqId=${requestId}][user=${userId}]`;
+  return {
+    requestId,
+    info(step: string, extra?: Record<string, unknown>) {
+      console.log(`${prefix} ${step}`, extra ? safeJson(extra) : "");
+    },
+    warn(step: string, extra?: Record<string, unknown>) {
+      console.warn(`${prefix} ${step}`, extra ? safeJson(extra) : "");
+    },
+    error(step: string, err: unknown, extra?: Record<string, unknown>) {
+      console.error(
+        `${prefix} ${step}`,
+        { ...(extra ?? {}), error: serializeError(err) },
+      );
+    },
+  };
+}
+
+function serializeError(err: unknown): Record<string, unknown> {
+  if (err && typeof err === "object") {
+    const e = err as Record<string, unknown> & { message?: string };
+    return {
+      message: e.message ?? String(err),
+      // Supabase / PostgREST errors carry these — surface them when present.
+      code: e.code,
+      details: e.details,
+      hint: e.hint,
+      status: e.status,
+    };
+  }
+  return { message: String(err) };
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 onboardingRouter.post("/", async (req, res, next) => {
   const { supabase, userId } = (req as AuthedRequest).auth;
+  const requestId = crypto.randomUUID();
+  const log = createLogger(requestId, userId);
+  // Surface the request id on the response so the user / frontend can
+  // include it when reporting an issue.
+  res.setHeader("X-Request-Id", requestId);
+
   const tracker: RollbackTracker = {};
+  const startedAt = Date.now();
+
+  log.info("request received");
 
   try {
     const parsed = onboardingSchema.parse(req.body);
+    log.info("payload validated", {
+      plan: parsed.plan,
+      services_count: parsed.services.length,
+      professionals_count: parsed.professionals.length,
+    });
 
     // Sanity check: don't let a user accidentally onboard twice. If they
     // already have a tenant_id we 409 instead of silently orphaning data.
@@ -116,14 +182,19 @@ onboardingRouter.post("/", async (req, res, next) => {
       .maybeSingle();
     if (profileFetchError) throw profileFetchError;
     if (currentProfile?.tenant_id) {
+      log.warn("aborted: user already linked to tenant", {
+        existing_tenant_id: currentProfile.tenant_id,
+      });
       return res.status(409).json({
         error: "Usuário já está vinculado a uma barbearia",
         tenant_id: currentProfile.tenant_id,
+        request_id: requestId,
       });
     }
 
     const tenantId = crypto.randomUUID();
     const slug = buildSlug(parsed.barbershop.name);
+    log.info("ownership check passed", { new_tenant_id: tenantId, slug });
 
     // 1. Tenant
     {
@@ -142,6 +213,7 @@ onboardingRouter.post("/", async (req, res, next) => {
       });
       if (error) throw error;
       tracker.tenantId = tenantId;
+      log.info("step 1/7 ok: tenant inserted", { tenant_id: tenantId });
     }
 
     // 2. Profile → tenant link
@@ -152,6 +224,7 @@ onboardingRouter.post("/", async (req, res, next) => {
         .eq("id", userId);
       if (error) throw error;
       tracker.profileLinked = true;
+      log.info("step 2/7 ok: profile linked to tenant");
     }
 
     // 3. User role (owner)
@@ -163,6 +236,7 @@ onboardingRouter.post("/", async (req, res, next) => {
       });
       if (error) throw error;
       tracker.roleInserted = true;
+      log.info("step 3/7 ok: owner role assigned");
     }
 
     // 4. Subscription with 15-day trial
@@ -177,6 +251,10 @@ onboardingRouter.post("/", async (req, res, next) => {
       });
       if (error) throw error;
       tracker.subscriptionInserted = true;
+      log.info("step 4/7 ok: subscription created (trial)", {
+        plan: parsed.plan,
+        expires_at: trialEndsAt.toISOString(),
+      });
     }
 
     // 5. Default category
@@ -189,6 +267,9 @@ onboardingRouter.post("/", async (req, res, next) => {
         .single();
       if (error) throw error;
       tracker.categoryId = category.id as string;
+      log.info("step 5/7 ok: default category created", {
+        category_id: tracker.categoryId,
+      });
 
       // 6. Services
       const { data: insertedServices, error: servicesError } = await supabase
@@ -207,6 +288,11 @@ onboardingRouter.post("/", async (req, res, next) => {
       tracker.serviceIds = (insertedServices ?? []).map(
         (row) => row.id as string,
       );
+      log.info("step 6/7 ok: services inserted", {
+        count: tracker.serviceIds.length,
+      });
+    } else {
+      log.info("step 5-6 skipped: no services to insert");
     }
 
     // 7. Professionals
@@ -226,35 +312,80 @@ onboardingRouter.post("/", async (req, res, next) => {
       tracker.professionalIds = (insertedPros ?? []).map(
         (row) => row.id as string,
       );
+      log.info("step 7/7 ok: professionals inserted", {
+        count: tracker.professionalIds.length,
+      });
+    } else {
+      log.info("step 7 skipped: no professionals to insert");
     }
 
-    return res.status(201).json({ tenant_id: tenantId });
+    log.info("success", {
+      tenant_id: tenantId,
+      duration_ms: Date.now() - startedAt,
+    });
+    return res
+      .status(201)
+      .json({ tenant_id: tenantId, request_id: requestId });
   } catch (err) {
+    log.error("request failed, initiating rollback", err, {
+      duration_ms: Date.now() - startedAt,
+      tracker_snapshot: snapshotTracker(tracker),
+    });
     // Best-effort rollback — see header comment for why this isn't a real TX.
-    await rollback(supabase, userId, tracker);
+    await rollback(supabase, userId, tracker, log);
     return next(err);
   }
 });
 
+function snapshotTracker(t: RollbackTracker) {
+  return {
+    tenant_id: t.tenantId ?? null,
+    profile_linked: !!t.profileLinked,
+    role_inserted: !!t.roleInserted,
+    subscription_inserted: !!t.subscriptionInserted,
+    category_id: t.categoryId ?? null,
+    services_inserted: t.serviceIds?.length ?? 0,
+    professionals_inserted: t.professionalIds?.length ?? 0,
+  };
+}
+
 /**
  * Compensating rollback. Runs in reverse insert order so foreign-key
  * constraints don't bite. Failures inside the rollback itself are logged
- * but swallowed: the original error from the request is what the client
- * needs to see.
+ * loudly (console.error with the request id) but swallowed: the original
+ * error from the request is what the client needs to see, and a noisy
+ * rollback log is what the operator needs to spot orphaned rows.
  */
 async function rollback(
   supabase: SupabaseLike,
   userId: string,
   tracker: RollbackTracker,
+  log: Logger,
 ) {
+  const snapshot = snapshotTracker(tracker);
+  log.warn("ROLLBACK START", snapshot);
+
+  const failures: string[] = [];
   const safeDelete = async (
     label: string,
-    fn: () => PromiseLike<unknown>,
+    fn: () => PromiseLike<{ error: unknown } | unknown>,
   ) => {
     try {
-      await fn();
+      const result = (await fn()) as { error?: unknown };
+      // Supabase returns { error } instead of throwing, so check both paths.
+      if (result && typeof result === "object" && "error" in result && result.error) {
+        failures.push(label);
+        log.error(`ROLLBACK step '${label}' failed`, result.error, {
+          rollback_step: label,
+        });
+        return;
+      }
+      log.info(`rollback step '${label}' ok`);
     } catch (err) {
-      console.error(`[onboarding] rollback step '${label}' failed:`, err);
+      failures.push(label);
+      log.error(`ROLLBACK step '${label}' threw`, err, {
+        rollback_step: label,
+      });
     }
   };
 
@@ -301,6 +432,18 @@ async function rollback(
   if (tracker.tenantId) {
     await safeDelete("tenants", () =>
       supabase.from("tenants").delete().eq("id", tracker.tenantId!),
+    );
+  }
+
+  if (failures.length === 0) {
+    log.info("ROLLBACK COMPLETE: clean", snapshot);
+  } else {
+    // INCONSISTENCY: at least one rollback step failed. Operator needs to
+    // inspect Supabase manually for orphaned rows tied to this requestId.
+    log.error(
+      "ROLLBACK COMPLETE WITH FAILURES — POSSIBLE ORPHANED ROWS",
+      new Error(`Rollback failures: ${failures.join(", ")}`),
+      { failed_steps: failures, ...snapshot },
     );
   }
 }
