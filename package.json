@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently -k -n web,api -c blue,magenta \"npm:dev:web\" \"npm:dev:api\"",
     "dev:web": "vite",
-    "dev:api": "tsx watch --tsconfig server/tsconfig.json server/index.ts",
+    "dev:api": "tsx watch --env-file=.env --tsconfig server/tsconfig.json server/index.ts",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
